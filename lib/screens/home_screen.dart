@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import '../models/burst_group.dart';
 import '../services/burst_photo_service.dart';
 import 'burst_list_screen.dart';
