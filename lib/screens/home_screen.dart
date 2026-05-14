@@ -430,7 +430,7 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                CupertinoIcons.hand_tap,
+                CupertinoIcons.hand_draw,
                 size: 20,
                 color: hasGroups
                     ? CupertinoColors.systemBlue
