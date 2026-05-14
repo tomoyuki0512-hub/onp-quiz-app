@@ -35,27 +35,60 @@ jobs:
         working-directory: ios
         run: pod install --repo-update
 
-      - name: Build iOS (no codesign)
-        run: flutter build ios --release --no-codesign
+      - name: Build iOS (xcodebuild, no codesign)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            SYMROOT="$(pwd)/build/ios" \
+            2>&1 | xcpretty --color --simple || \
+          xcodebuild build \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            SYMROOT="$(pwd)/build/ios"
+
+      - name: Locate built .app
+        run: |
+          find build/ios -name "Runner.app" -type d 2>/dev/null || true
+          ls -la build/ios/ 2>/dev/null || true
 
       - name: Create unsigned IPA
         run: |
-          cd build/ios/iphoneos
-          mkdir -p Payload
-          cp -R Runner.app Payload/
+          APP_PATH=$(find build/ios -name "Runner.app" -type d | head -1)
+          echo "Using .app at: $APP_PATH"
+          OUTDIR=$(dirname "$APP_PATH")
+          mkdir -p "$OUTDIR/Payload"
+          cp -R "$APP_PATH" "$OUTDIR/Payload/"
+          cd "$OUTDIR"
           zip -qq -r -9 photo_deleter-unsigned.ipa Payload
           ls -la photo_deleter-unsigned.ipa
+          echo "IPA_DIR=$OUTDIR" >> $GITHUB_ENV
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: photo_deleter-unsigned-ipa
-          path: build/ios/iphoneos/photo_deleter-unsigned.ipa
+          path: ${{ env.IPA_DIR }}/photo_deleter-unsigned.ipa
           retention-days: 30
 
       - name: Upload .app artifact
         uses: actions/upload-artifact@v4
         with:
           name: photo_deleter-Runner-app
-          path: build/ios/iphoneos/Runner.app
+          path: build/ios/**/Runner.app
           retention-days: 7
