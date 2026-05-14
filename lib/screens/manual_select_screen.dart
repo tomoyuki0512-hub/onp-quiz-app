@@ -65,6 +65,14 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
                     : CupertinoColors.secondaryLabel,
               ),
             ),
+            const SizedBox(height: 6),
+            const Text(
+              'iOSの確認ダイアログが表示されます。「削除」をタップしてください。',
+              style: TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.secondaryLabel,
+              ),
+            ),
           ],
         ),
         actions: [

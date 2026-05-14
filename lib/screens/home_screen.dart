@@ -64,6 +64,44 @@ class _HomeScreenState extends State<HomeScreen> {
     return _filteredGroups.where((g) => g.isRecentlyDeleted).length;
   }
 
+  void _showRecentlyDeletedHelp() {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('最近削除した項目とは？'),
+        content: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(height: 10),
+            Text(
+              'iPhoneで写真を削除すると、すぐに消えるわけではなく「最近削除した項目」アルバムに移動され、30日間保存されます。',
+              style: TextStyle(fontSize: 13),
+            ),
+            SizedBox(height: 8),
+            Text(
+              '30日経過後は自動的に完全削除されます。30日以内であれば写真を元に戻すことができます。',
+              style: TextStyle(fontSize: 13),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'このスイッチをオンにすると、「最近削除した項目」内のバースト写真も整理対象になります。これらを削除した場合は完全削除（元に戻せません）になります。',
+              style: TextStyle(
+                fontSize: 13,
+                color: CupertinoColors.destructiveRed,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('閉じる'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _runAutoClean() async {
     final groups = _filteredGroups;
     if (groups.isEmpty) return;
@@ -103,6 +141,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: CupertinoColors.secondaryLabel,
               ),
             ),
+            const SizedBox(height: 6),
+            const Text(
+              'iOSの確認ダイアログが表示されます。「削除」をタップして許可してください。',
+              style: TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.secondaryLabel,
+              ),
+            ),
           ],
         ),
         actions: [
@@ -122,24 +168,37 @@ class _HomeScreenState extends State<HomeScreen> {
     if (confirmed != true || !mounted) return;
 
     setState(() => _isLoading = true);
-    int deletedCount = 0;
-    int errorCount = 0;
 
+    // グループごとに別々に呼ぶと iOS の確認ダイアログが何度も出るため、
+    // 通常削除・完全削除それぞれを1回のAPI呼び出しにまとめる
+    final normalIds = <String>[];
+    final recentlyDeletedIds = <String>[];
     for (final group in groups) {
       final idsToDelete = group.assetIds
           .where((id) => id != group.autoPickId)
           .toList();
-      try {
-        bool success;
-        if (group.isRecentlyDeleted) {
-          success = await widget.service.permanentlyDeleteAssets(idsToDelete);
-        } else {
-          success = await widget.service.deleteAssets(idsToDelete);
-        }
-        if (success) deletedCount += idsToDelete.length;
-      } catch (_) {
-        errorCount++;
+      if (group.isRecentlyDeleted) {
+        recentlyDeletedIds.addAll(idsToDelete);
+      } else {
+        normalIds.addAll(idsToDelete);
       }
+    }
+
+    int deletedCount = 0;
+    String? errorMessage;
+
+    try {
+      if (normalIds.isNotEmpty) {
+        final ok = await widget.service.deleteAssets(normalIds);
+        if (ok) deletedCount += normalIds.length;
+      }
+      if (recentlyDeletedIds.isNotEmpty) {
+        final ok =
+            await widget.service.permanentlyDeleteAssets(recentlyDeletedIds);
+        if (ok) deletedCount += recentlyDeletedIds.length;
+      }
+    } catch (e) {
+      errorMessage = e.toString();
     }
 
     await _loadGroups();
@@ -148,11 +207,11 @@ class _HomeScreenState extends State<HomeScreen> {
     await showCupertinoDialog<void>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('完了！'),
+        title: Text(errorMessage == null ? '完了！' : '削除エラー'),
         content: Text(
-          errorCount == 0
+          errorMessage == null
               ? '$totalKeep枚を残して$deletedCount枚を削除しました。'
-              : '$deletedCount枚を削除しました（$errorCount件のエラーがありました）。',
+              : 'エラーが発生しました:\n$errorMessage',
         ),
         actions: [
           CupertinoDialogAction(
@@ -254,10 +313,23 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Flexible(
-                child: Text(
-                  '最近削除した項目も対象にする',
-                  style: TextStyle(fontSize: 15),
+              Flexible(
+                child: Row(
+                  children: [
+                    const Text(
+                      '最近削除した項目も対象にする',
+                      style: TextStyle(fontSize: 15),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: _showRecentlyDeletedHelp,
+                      child: const Icon(
+                        CupertinoIcons.question_circle,
+                        size: 17,
+                        color: CupertinoColors.systemBlue,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               CupertinoSwitch(
