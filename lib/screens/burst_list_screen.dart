@@ -50,7 +50,19 @@ class _BurstListScreenState extends State<BurstListScreen> {
         _remaining.remove(group);
         _completedCount++;
       });
+      _syncWithService();
     }
+  }
+
+  Future<void> _syncWithService() async {
+    try {
+      final fresh = await widget.service.getBurstGroups();
+      if (!mounted) return;
+      final freshBurstIds = {for (final g in fresh) g.burstId};
+      setState(() {
+        _remaining.removeWhere((g) => !freshBurstIds.contains(g.burstId));
+      });
+    } catch (_) {}
   }
 
   void _toggleSelectMode() {
@@ -151,6 +163,9 @@ class _BurstListScreenState extends State<BurstListScreen> {
           _selectedBurstIds.clear();
           _isSelectMode = false;
         });
+        await _syncWithService();
+        if (!mounted) return;
+        _showSuccessDialog(selected.length, permanently);
       } else {
         _showErrorDialog('削除に失敗しました。もう一度お試しください。');
       }
@@ -160,6 +175,26 @@ class _BurstListScreenState extends State<BurstListScreen> {
     } finally {
       if (mounted) setState(() => _isDeleting = false);
     }
+  }
+
+  void _showSuccessDialog(int groupCount, bool permanently) {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('完了'),
+        content: Text(
+          permanently
+              ? '$groupCount グループを完全削除しました。'
+              : '$groupCount グループを最近削除した項目に移動しました。',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showErrorDialog(String message) {
