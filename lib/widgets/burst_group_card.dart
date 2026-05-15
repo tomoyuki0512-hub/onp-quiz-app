@@ -77,7 +77,7 @@ class BurstGroupCard extends StatelessWidget {
       height: 24,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isSelected ? CupertinoColors.systemBlue : CupertinoColors.clear,
+        color: isSelected ? CupertinoColors.systemBlue : const Color(0x00000000),
         border: Border.all(
           color: isSelected
               ? CupertinoColors.systemBlue
