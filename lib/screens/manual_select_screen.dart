@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
-import 'package:photo_manager/photo_manager.dart';
 import '../models/burst_group.dart';
 import '../services/burst_photo_service.dart';
 
@@ -170,6 +169,7 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
                   return _PhotoPage(
                     assetId: group.assetIds[index],
                     isBestPick: group.assetIds[index] == group.bestPickId,
+                    service: widget.service,
                   );
                 },
               ),
@@ -263,18 +263,47 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 写真1枚分のデータ（ネイティブから取得）
+// ---------------------------------------------------------------------------
+
+class _AssetData {
+  final Uint8List thumbnailBytes;
+  final DateTime? createdAt;
+  final double? latitude;
+  final double? longitude;
+
+  _AssetData({
+    required this.thumbnailBytes,
+    this.createdAt,
+    this.latitude,
+    this.longitude,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// PageView の各ページ：ネイティブ経由でサムネイル取得
+// （photo_manager の AssetEntity.fromId は includeAllBurstAssets=false のため
+//  代表写真以外のバースト写真を取得できない。ネイティブ側で直接取得する）
+// ---------------------------------------------------------------------------
+
 class _PhotoPage extends StatefulWidget {
   final String assetId;
   final bool isBestPick;
+  final BurstPhotoService service;
 
-  const _PhotoPage({required this.assetId, required this.isBestPick});
+  const _PhotoPage({
+    required this.assetId,
+    required this.isBestPick,
+    required this.service,
+  });
 
   @override
   State<_PhotoPage> createState() => _PhotoPageState();
 }
 
 class _PhotoPageState extends State<_PhotoPage> {
-  late Future<(AssetEntity?, Uint8List?)> _loadFuture;
+  late Future<_AssetData?> _loadFuture;
 
   @override
   void initState() {
@@ -282,27 +311,37 @@ class _PhotoPageState extends State<_PhotoPage> {
     _loadFuture = _loadPhoto();
   }
 
-  Future<(AssetEntity?, Uint8List?)> _loadPhoto() async {
-    final entity = await AssetEntity.fromId(widget.assetId);
-    if (entity == null) return (null, null);
-    final data = await entity.thumbnailDataWithSize(
-      const ThumbnailSize(1080, 1080),
-      quality: 95,
+  Future<_AssetData?> _loadPhoto() async {
+    final raw = await widget.service.getAssetData(widget.assetId);
+    if (raw == null) return null;
+
+    final thumb = raw['thumbnailData'];
+    if (thumb == null || thumb is! Uint8List) return null;
+
+    final ts = raw['createdAt'] as int?;
+    final lat = (raw['latitude'] as num?)?.toDouble();
+    final lng = (raw['longitude'] as num?)?.toDouble();
+
+    return _AssetData(
+      thumbnailBytes: thumb,
+      createdAt:
+          ts != null ? DateTime.fromMillisecondsSinceEpoch(ts * 1000) : null,
+      latitude: lat,
+      longitude: lng,
     );
-    return (entity, data);
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<(AssetEntity?, Uint8List?)>(
+    return FutureBuilder<_AssetData?>(
       future: _loadFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CupertinoActivityIndicator(radius: 16));
         }
 
-        final (entity, data) = snapshot.data!;
-        if (data == null) {
+        final assetData = snapshot.data;
+        if (assetData == null) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -327,7 +366,7 @@ class _PhotoPageState extends State<_PhotoPage> {
           children: [
             InteractiveViewer(
               child: Image.memory(
-                data,
+                assetData.thumbnailBytes,
                 fit: BoxFit.contain,
               ),
             ),
@@ -354,28 +393,60 @@ class _PhotoPageState extends State<_PhotoPage> {
                   ),
                 ),
               ),
-            if (entity != null)
-              Positioned(
-                bottom: 10,
-                left: 10,
-                child: _buildPhotoInfo(entity),
-              ),
+            Positioned(
+              bottom: 10,
+              left: 10,
+              child: _buildPhotoInfo(assetData),
+            ),
           ],
         );
       },
     );
   }
 
-  Widget _buildPhotoInfo(AssetEntity entity) {
-    final dt = entity.createDateTime;
-    final dateStr =
-        '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}'
-        ' ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-
-    final lat = entity.latitude;
-    final lng = entity.longitude;
+  Widget _buildPhotoInfo(_AssetData data) {
+    final dt = data.createdAt;
+    final lat = data.latitude;
+    final lng = data.longitude;
     final hasLocation =
         lat != null && lng != null && (lat.abs() > 0.0001 || lng.abs() > 0.0001);
+
+    final rows = <Widget>[];
+
+    if (dt != null) {
+      final dateStr =
+          '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}'
+          ' ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      rows.add(Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(CupertinoIcons.clock, size: 13, color: CupertinoColors.white),
+          const SizedBox(width: 5),
+          Text(
+            dateStr,
+            style: const TextStyle(fontSize: 12, color: CupertinoColors.white),
+          ),
+        ],
+      ));
+    }
+
+    if (hasLocation) {
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: 3));
+      rows.add(Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(CupertinoIcons.location_solid,
+              size: 13, color: CupertinoColors.white),
+          const SizedBox(width: 5),
+          Text(
+            '${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}',
+            style: const TextStyle(fontSize: 12, color: CupertinoColors.white),
+          ),
+        ],
+      ));
+    }
+
+    if (rows.isEmpty) return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -386,34 +457,7 @@ class _PhotoPageState extends State<_PhotoPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(CupertinoIcons.clock, size: 13, color: CupertinoColors.white),
-              const SizedBox(width: 5),
-              Text(
-                dateStr,
-                style: const TextStyle(fontSize: 12, color: CupertinoColors.white),
-              ),
-            ],
-          ),
-          if (hasLocation) ...[
-            const SizedBox(height: 3),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(CupertinoIcons.location_solid,
-                    size: 13, color: CupertinoColors.white),
-                const SizedBox(width: 5),
-                Text(
-                  '${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}',
-                  style: const TextStyle(fontSize: 12, color: CupertinoColors.white),
-                ),
-              ],
-            ),
-          ],
-        ],
+        children: rows,
       ),
     );
   }

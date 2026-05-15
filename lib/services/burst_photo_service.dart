@@ -36,4 +36,17 @@ class BurstPhotoService {
     );
     return result ?? false;
   }
+
+  /// バースト写真（非代表写真含む）のサムネイルとメタデータを取得する
+  Future<Map<String, dynamic>?> getAssetData(
+    String assetId, {
+    int size = 1080,
+  }) async {
+    final raw = await _channel.invokeMethod(
+      'getAssetData',
+      {'assetId': assetId, 'size': size},
+    );
+    if (raw == null) return null;
+    return Map<String, dynamic>.from(raw as Map);
+  }
 }
