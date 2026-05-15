@@ -81,19 +81,21 @@ class _BurstListScreenState extends State<BurstListScreen> {
     final confirmed = await showCupertinoDialog<bool>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('選択グループを削除'),
+        title: Text(permanently ? '選択グループを削除' : 'ベストショットを確認'),
         content: Column(
           children: [
             const SizedBox(height: 8),
             Text(
-              '${selected.length}グループのベストショット各1枚を残して、$deleteCount枚を${permanently ? "完全削除" : "削除"}します。',
+              permanently
+                  ? '${selected.length}グループのベストショット各1枚を残して、$deleteCount枚を完全削除します。'
+                  : '${selected.length}グループのベストショットを確認します（写真は削除されません）。',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 6),
             Text(
               permanently
-                  ? '⚠️ 完全削除すると元に戻せません。'
-                  : '削除した写真は「最近削除した項目」に30日間残ります。',
+                  ? '⚠️ iOSの仕様上、バースト写真は完全削除されます。元に戻せません。'
+                  : '確認モードです。実際に削除するにはホームで「実際に削除する」をONにしてください。',
               style: TextStyle(
                 fontSize: 13,
                 color: permanently
@@ -101,14 +103,16 @@ class _BurstListScreenState extends State<BurstListScreen> {
                     : CupertinoColors.secondaryLabel,
               ),
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'iOSの確認ダイアログが表示されます。「削除」をタップしてください。',
-              style: TextStyle(
-                fontSize: 12,
-                color: CupertinoColors.secondaryLabel,
+            if (permanently) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'iOSの確認ダイアログが表示されます。「削除」をタップしてください。',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: CupertinoColors.secondaryLabel,
+                ),
               ),
-            ),
+            ],
           ],
         ),
         actions: [
@@ -117,15 +121,28 @@ class _BurstListScreenState extends State<BurstListScreen> {
             child: const Text('キャンセル'),
           ),
           CupertinoDialogAction(
-            isDestructiveAction: true,
+            isDestructiveAction: permanently,
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(permanently ? '完全削除する' : '削除する'),
+            child: Text(permanently ? '完全削除する' : '確認する'),
           ),
         ],
       ),
     );
 
     if (confirmed != true || !mounted) return;
+
+    // 確認モード: 削除せずに処理済みとしてリストから除外
+    if (!permanently) {
+      setState(() {
+        for (final g in selected) {
+          _remaining.remove(g);
+          _completedCount++;
+        }
+        _selectedBurstIds.clear();
+        _isSelectMode = false;
+      });
+      return;
+    }
 
     setState(() => _isDeleting = true);
     try {
@@ -134,9 +151,7 @@ class _BurstListScreenState extends State<BurstListScreen> {
         idsToDelete.addAll(g.assetIds.where((id) => id != g.autoPickId));
       }
 
-      final success = permanently
-          ? await widget.service.permanentlyDeleteAssets(idsToDelete)
-          : await widget.service.deleteAssets(idsToDelete);
+      final success = await widget.service.deleteAssets(idsToDelete);
 
       if (!mounted) return;
 
@@ -292,7 +307,7 @@ class _BurstListScreenState extends State<BurstListScreen> {
               borderRadius: BorderRadius.circular(12),
               child: Text(
                 count > 0
-                    ? '$count グループを${permanently ? "完全削除" : "削除"}'
+                    ? '$count グループを${permanently ? "完全削除" : "確認"}'
                     : 'グループを選択してください',
                 style: const TextStyle(
                   fontSize: 15,
