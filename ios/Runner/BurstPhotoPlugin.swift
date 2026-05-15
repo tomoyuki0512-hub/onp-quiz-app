@@ -128,18 +128,14 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
 
     private func deleteAssets(localIds: [String], result: @escaping FlutterResult) {
         let localIdSet = Set(localIds)
+
+        // withLocalIdentifiers は includeAllBurstAssets を無視するため非代表フレームが取得できない。
+        // getBurstGroups と同じ全件取得 + 列挙フィルタで確実に取得する。
         let options = PHFetchOptions()
         options.includeAllBurstAssets = true
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: options)
-        guard fetchResult.count > 0 else {
-            result(true)
-            return
-        }
-
-        // includeAllBurstAssets=true により要求していない代表写真が混入する場合があるため
-        // 明示的に要求した ID のみに絞り込む（残す1枚を誤って削除しないよう保護）
+        let allAssets = PHAsset.fetchAssets(with: options)
         var assetsToDelete: [PHAsset] = []
-        fetchResult.enumerateObjects { asset, _, _ in
+        allAssets.enumerateObjects { asset, _, _ in
             if localIdSet.contains(asset.localIdentifier) {
                 assetsToDelete.append(asset)
             }
@@ -214,17 +210,14 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
 
     private func permanentlyDeleteAssets(localIds: [String], result: @escaping FlutterResult) {
         let localIdSet = Set(localIds)
+
+        // withLocalIdentifiers は includeAllBurstAssets を無視するため非代表フレームが取得できない。
+        // getBurstGroups と同じ全件取得 + 列挙フィルタで確実に取得する。
         let options = PHFetchOptions()
         options.includeAllBurstAssets = true
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: options)
-        guard fetchResult.count > 0 else {
-            result(true)
-            return
-        }
-
-        // 要求した ID のみに絞り込む
+        let allAssets = PHAsset.fetchAssets(with: options)
         var assetsToDelete: [PHAsset] = []
-        fetchResult.enumerateObjects { asset, _, _ in
+        allAssets.enumerateObjects { asset, _, _ in
             if localIdSet.contains(asset.localIdentifier) {
                 assetsToDelete.append(asset)
             }
