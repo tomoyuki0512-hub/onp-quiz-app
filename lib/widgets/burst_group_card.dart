@@ -124,29 +124,27 @@ class BurstGroupCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            if (group.isRecentlyDeleted) ...[
-              const Icon(
+        if (group.isRecentlyDeleted) ...[
+          Row(
+            children: const [
+              Icon(
                 CupertinoIcons.trash,
                 size: 14,
                 color: CupertinoColors.destructiveRed,
               ),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              group.isRecentlyDeleted ? '最近削除した項目' : 'バーストグループ',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: group.isRecentlyDeleted
-                    ? CupertinoColors.destructiveRed
-                    : CupertinoColors.label,
+              SizedBox(width: 4),
+              Text(
+                '最近削除した項目',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: CupertinoColors.destructiveRed,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 3),
+            ],
+          ),
+          const SizedBox(height: 3),
+        ],
         Text(
           '${group.count}枚 · ${group.count - 1}枚を削除可能',
           style: const TextStyle(
