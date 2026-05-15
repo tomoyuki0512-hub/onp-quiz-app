@@ -166,6 +166,50 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
         }
     }
 
+    // MARK: - Find Recently Deleted Album
+
+    /// 「最近削除した項目」スマートアルバムを検索する。
+    /// PHAssetCollectionSubtype.smartAlbumRecentlyDeleted は公開SDKに存在しないため、
+    /// 全スマートアルバムを列挙し、プライベート定数の rawValue (=1000000201) または
+    /// ローカライズされたタイトルで判定する。
+    /// （rawValue 206 は smartAlbumRecentlyAdded であって RecentlyDeleted ではない点に注意）
+    private func findRecentlyDeletedCollection() -> PHAssetCollection? {
+        let all = PHAssetCollection.fetchAssetCollections(
+            with: .smartAlbum, subtype: .any, options: nil
+        )
+        let knownTitles: Set<String> = [
+            "Recently Deleted",
+            "最近削除した項目",
+            "최근에 삭제된 항목",
+            "最近删除",
+            "最近刪除",
+            "Suppressions récentes",
+            "Zuletzt gelöscht",
+            "Eliminados recientemente",
+            "Eliminados recentemente",
+            "Eliminati di recente",
+            "Verwijderde objecten",
+            "Senast borttagna",
+            "Nyligt slettet",
+            "Nylig slettet",
+            "Az utóbbi időben törölt elemek",
+            "Недавно удалённые",
+        ]
+        var found: PHAssetCollection?
+        all.enumerateObjects { collection, _, stop in
+            if collection.assetCollectionSubtype.rawValue == 1000000201 {
+                found = collection
+                stop.pointee = true
+                return
+            }
+            if let title = collection.localizedTitle, knownTitles.contains(title) {
+                found = collection
+                stop.pointee = true
+            }
+        }
+        return found
+    }
+
     // MARK: - Permanently Delete (最近削除した項目を経由して完全削除)
 
     private func permanentlyDeleteAssets(localIds: [String], result: @escaping FlutterResult) {
@@ -206,26 +250,16 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             }
 
             // Step 2: 最近削除した項目から完全削除
-            // PHAssetCollectionSubtype.smartAlbumRecentlyDeleted は iOS 18.5 SDK から
-            // 削除されたが rawValue=206 でアルバム自体には引き続きアクセス可能
-            guard let rdSubtype = PHAssetCollectionSubtype(rawValue: 206) else {
-                DispatchQueue.main.async { result(true) }
-                return
-            }
-            let rdCollections = PHAssetCollection.fetchAssetCollections(
-                with: .smartAlbum, subtype: rdSubtype, options: nil
-            )
-            guard rdCollections.count > 0 else {
+            guard let rdCollection = self.findRecentlyDeletedCollection() else {
                 // 最近削除した項目にアクセス不可 → 通常削除のみで完了
                 DispatchQueue.main.async { result(true) }
                 return
             }
 
             // step 1 後は localIdentifier でメインライブラリから検索しても 0 件になるため
-            // 最近削除したアルバム内を predicate でフィルタして取得する
-            let rdCollection = rdCollections.firstObject!
+            // 最近削除したアルバム内を predicate でフィルタして取得する。
+            // includeAllBurstAssets はメインライブラリのバースト写真を混入させるため使わない。
             let rdOptions = PHFetchOptions()
-            rdOptions.includeAllBurstAssets = true
             rdOptions.predicate = NSPredicate(format: "localIdentifier IN %@", localIds)
             let rdAssets = PHAsset.fetchAssets(in: rdCollection, options: rdOptions)
             guard rdAssets.count > 0 else {
@@ -245,14 +279,7 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
 
     private func emptyRecentlyDeleted(result: @escaping FlutterResult) {
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let rdSubtype = PHAssetCollectionSubtype(rawValue: 206) else {
-                DispatchQueue.main.async { result(0) }
-                return
-            }
-            let rdCollections = PHAssetCollection.fetchAssetCollections(
-                with: .smartAlbum, subtype: rdSubtype, options: nil
-            )
-            guard let rdCollection = rdCollections.firstObject else {
+            guard let rdCollection = self.findRecentlyDeletedCollection() else {
                 DispatchQueue.main.async { result(0) }
                 return
             }
