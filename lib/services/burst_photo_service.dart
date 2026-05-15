@@ -1,15 +1,38 @@
+import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import '../models/burst_group.dart';
 
 class BurstPhotoService {
-  Future<String> requestPermission() async => 'unknown';
+  static const _channel = MethodChannel('com.example.photo_deleter/burst');
 
-  Future<List<BurstGroup>> getBurstGroups() async => [];
+  Future<String> requestPermission() async {
+    final status = await _channel.invokeMethod<String>('requestPermission');
+    return status ?? 'unknown';
+  }
 
-  Future<bool> deleteAssets(List<String> ids) async => false;
+  Future<List<BurstGroup>> getBurstGroups() async {
+    final raw = await _channel.invokeMethod<List>('getBurstGroups');
+    if (raw == null) return [];
+    return raw
+        .map((e) => BurstGroup.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
 
-  Future<bool> permanentlyDeleteAssets(List<String> ids) async => false;
+  Future<Uint8List?> getAssetThumbnail(String assetId, {int size = 300}) async {
+    final raw = await _channel.invokeMethod(
+      'getAssetThumbnail',
+      {'assetId': assetId, 'size': size},
+    );
+    if (raw is Uint8List) return raw;
+    return null;
+  }
 
-  Future<int> emptyRecentlyDeleted() async => 0;
-
-  Future<Map<String, dynamic>?> getAssetData(String assetId, {int size = 1080}) async => null;
+  Future<bool> deleteAssets(List<String> ids) async {
+    if (ids.isEmpty) return true;
+    final result = await _channel.invokeMethod<bool>(
+      'deleteAssets',
+      {'assetIds': ids},
+    );
+    return result ?? false;
+  }
 }
