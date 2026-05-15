@@ -19,8 +19,6 @@ class _HomeScreenState extends State<HomeScreen> {
   int _minCount = 2;
   bool _permanentlyDelete = false;
 
-  static const _segmentValues = {0: 2, 1: 5, 2: 10};
-
   @override
   void initState() {
     super.initState();
@@ -270,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '対象グループ',
+            'バースト枚数フィルター',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -278,21 +276,45 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          CupertinoSlidingSegmentedControl<int>(
-            groupValue: _segmentValues.entries
-                .firstWhere((e) => e.value == _minCount,
-                    orElse: () => const MapEntry(0, 2))
-                .key,
-            children: const {
-              0: Text('すべて (2枚+)'),
-              1: Text('5枚以上'),
-              2: Text('10枚以上'),
-            },
-            onValueChanged: (v) {
-              if (v != null) {
-                setState(() => _minCount = _segmentValues[v]!);
-              }
-            },
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minSize: 36,
+                onPressed:
+                    _minCount > 2 ? () => setState(() => _minCount--) : null,
+                child: const Icon(
+                  CupertinoIcons.minus_circle_fill,
+                  size: 30,
+                  color: CupertinoColors.systemBlue,
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 96,
+                child: Text(
+                  _minCount == 2 ? 'すべて\n(2枚以上)' : '$_minCount 枚以上',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(width: 12),
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minSize: 36,
+                onPressed:
+                    _minCount < 99 ? () => setState(() => _minCount++) : null,
+                child: const Icon(
+                  CupertinoIcons.plus_circle_fill,
+                  size: 30,
+                  color: CupertinoColors.systemBlue,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
           Row(

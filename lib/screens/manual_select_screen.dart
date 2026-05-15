@@ -301,7 +301,7 @@ class _PhotoPageState extends State<_PhotoPage> {
           return const Center(child: CupertinoActivityIndicator(radius: 16));
         }
 
-        final (_, data) = snapshot.data!;
+        final (entity, data) = snapshot.data!;
         if (data == null) {
           return Center(
             child: Column(
@@ -354,9 +354,67 @@ class _PhotoPageState extends State<_PhotoPage> {
                   ),
                 ),
               ),
+            if (entity != null)
+              Positioned(
+                bottom: 10,
+                left: 10,
+                child: _buildPhotoInfo(entity),
+              ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildPhotoInfo(AssetEntity entity) {
+    final dt = entity.createDateTime;
+    final dateStr =
+        '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}'
+        ' ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+    final lat = entity.latitude;
+    final lng = entity.longitude;
+    final hasLocation =
+        lat != null && lng != null && (lat.abs() > 0.0001 || lng.abs() > 0.0001);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xCC000000),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(CupertinoIcons.clock, size: 13, color: CupertinoColors.white),
+              const SizedBox(width: 5),
+              Text(
+                dateStr,
+                style: const TextStyle(fontSize: 12, color: CupertinoColors.white),
+              ),
+            ],
+          ),
+          if (hasLocation) ...[
+            const SizedBox(height: 3),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(CupertinoIcons.location_solid,
+                    size: 13, color: CupertinoColors.white),
+                const SizedBox(width: 5),
+                Text(
+                  '${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}',
+                  style: const TextStyle(fontSize: 12, color: CupertinoColors.white),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
