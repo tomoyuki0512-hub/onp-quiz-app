@@ -127,8 +127,7 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
     // MARK: - Delete (→ 最近削除した項目へ移動)
 
     private func deleteAssets(localIds: [String], result: @escaping FlutterResult) {
-        // includeAllBurstAssets=true が必須:
-        // バーストの代表写真以外はデフォルトで hidden 扱いのため nil オプションでは 0件になる
+        let localIdSet = Set(localIds)
         let options = PHFetchOptions()
         options.includeAllBurstAssets = true
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: options)
@@ -137,8 +136,21 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             return
         }
 
+        // includeAllBurstAssets=true により要求していない代表写真が混入する場合があるため
+        // 明示的に要求した ID のみに絞り込む（残す1枚を誤って削除しないよう保護）
+        var assetsToDelete: [PHAsset] = []
+        fetchResult.enumerateObjects { asset, _, _ in
+            if localIdSet.contains(asset.localIdentifier) {
+                assetsToDelete.append(asset)
+            }
+        }
+        guard !assetsToDelete.isEmpty else {
+            result(true)
+            return
+        }
+
         PHPhotoLibrary.shared().performChanges({
-            PHAssetChangeRequest.deleteAssets(fetchResult)
+            PHAssetChangeRequest.deleteAssets(assetsToDelete as NSArray)
         }) { success, error in
             DispatchQueue.main.async {
                 if success {
@@ -157,6 +169,7 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
     // MARK: - Permanently Delete (最近削除した項目を経由して完全削除)
 
     private func permanentlyDeleteAssets(localIds: [String], result: @escaping FlutterResult) {
+        let localIdSet = Set(localIds)
         let options = PHFetchOptions()
         options.includeAllBurstAssets = true
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: options)
@@ -165,9 +178,21 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             return
         }
 
+        // 要求した ID のみに絞り込む
+        var assetsToDelete: [PHAsset] = []
+        fetchResult.enumerateObjects { asset, _, _ in
+            if localIdSet.contains(asset.localIdentifier) {
+                assetsToDelete.append(asset)
+            }
+        }
+        guard !assetsToDelete.isEmpty else {
+            result(true)
+            return
+        }
+
         // Step 1: 通常削除 → 最近削除した項目へ移動
         PHPhotoLibrary.shared().performChanges({
-            PHAssetChangeRequest.deleteAssets(fetchResult)
+            PHAssetChangeRequest.deleteAssets(assetsToDelete as NSArray)
         }) { success, error in
             guard success else {
                 DispatchQueue.main.async {
