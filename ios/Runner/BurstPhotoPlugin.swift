@@ -168,7 +168,10 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             // Step 2: 最近削除した項目から完全削除
             // PHAssetCollectionSubtype.smartAlbumRecentlyDeleted は iOS 18.5 SDK から
             // 削除されたが rawValue=206 でアルバム自体には引き続きアクセス可能
-            let rdSubtype = PHAssetCollectionSubtype(rawValue: 206)
+            guard let rdSubtype = PHAssetCollectionSubtype(rawValue: 206) else {
+                DispatchQueue.main.async { result(true) }
+                return
+            }
             let rdCollections = PHAssetCollection.fetchAssetCollections(
                 with: .smartAlbum, subtype: rdSubtype, options: nil
             )
