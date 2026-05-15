@@ -6,21 +6,42 @@ import '../models/burst_group.dart';
 class BurstGroupCard extends StatelessWidget {
   final BurstGroup group;
   final VoidCallback onTap;
+  final bool isSelectMode;
+  final bool isSelected;
 
   const BurstGroupCard({
     super.key,
     required this.group,
     required this.onTap,
+    this.isSelectMode = false,
+    this.isSelected = false,
   });
+
+  String _formatDate(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final dtDay = DateTime(dt.year, dt.month, dt.day);
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    final time = '$hh:$mm';
+    if (dtDay == today) return '今日 $time';
+    if (dtDay == yesterday) return '昨日 $time';
+    if (dt.year == now.year) return '${dt.month}月${dt.day}日 $time';
+    return '${dt.year}/${dt.month}/${dt.day} $time';
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: CupertinoColors.systemBackground,
+          color: isSelected
+              ? CupertinoColors.systemBlue.withOpacity(0.08)
+              : CupertinoColors.systemBackground,
           border: Border(
             bottom: BorderSide(
               color: CupertinoColors.separator.resolveFrom(context),
@@ -30,17 +51,43 @@ class BurstGroupCard extends StatelessWidget {
         ),
         child: Row(
           children: [
+            if (isSelectMode) ...[
+              _buildCheckbox(),
+              const SizedBox(width: 12),
+            ],
             _buildThumbnail(),
             const SizedBox(width: 14),
             Expanded(child: _buildInfo()),
-            const Icon(
-              CupertinoIcons.chevron_right,
-              size: 16,
-              color: CupertinoColors.systemGrey3,
-            ),
+            if (!isSelectMode)
+              const Icon(
+                CupertinoIcons.chevron_right,
+                size: 16,
+                color: CupertinoColors.systemGrey3,
+              ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCheckbox() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isSelected ? CupertinoColors.systemBlue : CupertinoColors.clear,
+        border: Border.all(
+          color: isSelected
+              ? CupertinoColors.systemBlue
+              : CupertinoColors.systemGrey3,
+          width: 2,
+        ),
+      ),
+      child: isSelected
+          ? const Icon(CupertinoIcons.checkmark, size: 14, color: CupertinoColors.white)
+          : null,
     );
   }
 
@@ -99,7 +146,7 @@ class BurstGroupCard extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         Text(
           '${group.count}枚 · ${group.count - 1}枚を削除可能',
           style: const TextStyle(
@@ -107,11 +154,30 @@ class BurstGroupCard extends StatelessWidget {
             color: CupertinoColors.secondaryLabel,
           ),
         ),
+        if (group.createdAt != null) ...[
+          const SizedBox(height: 3),
+          Row(
+            children: [
+              const Icon(
+                CupertinoIcons.clock,
+                size: 12,
+                color: CupertinoColors.systemGrey2,
+              ),
+              const SizedBox(width: 3),
+              Text(
+                _formatDate(group.createdAt!),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: CupertinoColors.secondaryLabel,
+                ),
+              ),
+            ],
+          ),
+        ],
         if (group.bestPickId != null) ...[
           const SizedBox(height: 4),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: CupertinoColors.systemBlue.withOpacity(0.12),
               borderRadius: BorderRadius.circular(4),

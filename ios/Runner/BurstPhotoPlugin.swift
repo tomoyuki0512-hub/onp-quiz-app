@@ -91,16 +91,21 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             let payload: [[String: Any]] = allGroups.compactMap { (burstId, assets) in
                 guard assets.count >= 2 else { return nil }
                 let assetIds = assets.map { $0.localIdentifier }
-                let bestPickId = assets.first(where: { $0.representsBurst })?.localIdentifier
+                let representative = assets.first(where: { $0.representsBurst }) ?? assets.first
+                let bestPickId = representative?.localIdentifier
+                let createdAt = representative?.creationDate.map { Int($0.timeIntervalSince1970) }
                 return [
                     "burstId": burstId,
                     "assetIds": assetIds,
                     "bestPickId": bestPickId as Any,
                     "count": assets.count,
-                    "isRecentlyDeleted": false
+                    "isRecentlyDeleted": false,
+                    "createdAt": createdAt as Any
                 ]
             }.sorted {
-                ($0["count"] as! Int) > ($1["count"] as! Int)
+                let a = $0["createdAt"] as? Int ?? 0
+                let b = $1["createdAt"] as? Int ?? 0
+                return a < b
             }
 
             DispatchQueue.main.async {
