@@ -7,11 +7,13 @@ import '../services/burst_photo_service.dart';
 class ManualSelectScreen extends StatefulWidget {
   final BurstGroup group;
   final BurstPhotoService service;
+  final bool permanentlyDelete;
 
   const ManualSelectScreen({
     super.key,
     required this.group,
     required this.service,
+    required this.permanentlyDelete,
   });
 
   @override
@@ -40,7 +42,7 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
     final idsToDelete =
         widget.group.assetIds.where((id) => id != keepId).toList();
     final deleteCount = idsToDelete.length;
-    final isRecentlyDeleted = widget.group.isRecentlyDeleted;
+    final permanently = widget.permanentlyDelete;
 
     final confirmed = await showCupertinoDialog<bool>(
       context: context,
@@ -50,17 +52,17 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
           children: [
             const SizedBox(height: 8),
             Text(
-              'この写真を残して、他の$deleteCount枚を${isRecentlyDeleted ? "完全削除" : "削除"}します。',
+              'この写真を残して、他の$deleteCount枚を${permanently ? "完全削除" : "削除"}します。',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 6),
             Text(
-              isRecentlyDeleted
+              permanently
                   ? '⚠️ 完全削除すると元に戻せません。'
                   : '削除した写真は「最近削除した項目」に30日間残ります。',
               style: TextStyle(
                 fontSize: 13,
-                color: isRecentlyDeleted
+                color: permanently
                     ? CupertinoColors.destructiveRed
                     : CupertinoColors.secondaryLabel,
               ),
@@ -83,7 +85,7 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(isRecentlyDeleted ? '完全削除する' : '削除する'),
+            child: Text(permanently ? '完全削除する' : '削除する'),
           ),
         ],
       ),
@@ -94,7 +96,7 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
     setState(() => _isDeleting = true);
     try {
       bool success;
-      if (isRecentlyDeleted) {
+      if (permanently) {
         success = await widget.service.permanentlyDeleteAssets(idsToDelete);
       } else {
         success = await widget.service.deleteAssets(idsToDelete);

@@ -9,12 +9,8 @@ class BurstPhotoService {
     return status ?? 'unknown';
   }
 
-  Future<List<BurstGroup>> getBurstGroups({
-    bool includeRecentlyDeleted = false,
-  }) async {
-    final raw = await _channel.invokeMethod<List>('getBurstGroups', {
-      'includeRecentlyDeleted': includeRecentlyDeleted,
-    });
+  Future<List<BurstGroup>> getBurstGroups() async {
+    final raw = await _channel.invokeMethod<List>('getBurstGroups');
     if (raw == null) return [];
     return raw
         .map((e) => BurstGroup.fromMap(Map<String, dynamic>.from(e as Map)))

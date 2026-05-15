@@ -7,11 +7,13 @@ import 'manual_select_screen.dart';
 class BurstListScreen extends StatefulWidget {
   final List<BurstGroup> groups;
   final BurstPhotoService service;
+  final bool permanentlyDelete;
 
   const BurstListScreen({
     super.key,
     required this.groups,
     required this.service,
+    required this.permanentlyDelete,
   });
 
   @override
@@ -35,6 +37,7 @@ class _BurstListScreenState extends State<BurstListScreen> {
         builder: (_) => ManualSelectScreen(
           group: group,
           service: widget.service,
+          permanentlyDelete: widget.permanentlyDelete,
         ),
       ),
     );

@@ -18,9 +18,7 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
         case "requestPermission":
             requestPermission(result: result)
         case "getBurstGroups":
-            let args = call.arguments as? [String: Any]
-            let includeRecentlyDeleted = args?["includeRecentlyDeleted"] as? Bool ?? false
-            getBurstGroups(includeRecentlyDeleted: includeRecentlyDeleted, result: result)
+            getBurstGroups(result: result)
         case "deleteAssets":
             guard let args = call.arguments as? [String: Any],
                   let ids = args["assetIds"] as? [String] else {
@@ -34,9 +32,7 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: "BAD_ARGS", message: "assetIds が必要です", details: nil))
                 return
             }
-            // smartAlbumRecentlyDeleted is unavailable in iOS 18+ SDK;
-            // fall back to standard delete (moves to Recently Deleted folder).
-            deleteAssets(localIds: ids, result: result)
+            permanentlyDeleteAssets(localIds: ids, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -76,7 +72,7 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
 
     // MARK: - Fetch Burst Groups
 
-    private func getBurstGroups(includeRecentlyDeleted: Bool, result: @escaping FlutterResult) {
+    private func getBurstGroups(result: @escaping FlutterResult) {
         DispatchQueue.global(qos: .userInitiated).async {
             var allGroups: [String: [PHAsset]] = [:]
 
@@ -116,7 +112,11 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
     // MARK: - Delete (→ 最近削除した項目へ移動)
 
     private func deleteAssets(localIds: [String], result: @escaping FlutterResult) {
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: nil)
+        // includeAllBurstAssets=true が必須:
+        // バーストの代表写真以外はデフォルトで hidden 扱いのため nil オプションでは 0件になる
+        let options = PHFetchOptions()
+        options.includeAllBurstAssets = true
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: options)
         guard fetchResult.count > 0 else {
             result(true)
             return
@@ -135,6 +135,61 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                         details: nil
                     ))
                 }
+            }
+        }
+    }
+
+    // MARK: - Permanently Delete (最近削除した項目を経由して完全削除)
+
+    private func permanentlyDeleteAssets(localIds: [String], result: @escaping FlutterResult) {
+        let options = PHFetchOptions()
+        options.includeAllBurstAssets = true
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: options)
+        guard fetchResult.count > 0 else {
+            result(true)
+            return
+        }
+
+        // Step 1: 通常削除 → 最近削除した項目へ移動
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest.deleteAssets(fetchResult)
+        }) { success, error in
+            guard success else {
+                DispatchQueue.main.async {
+                    result(FlutterError(
+                        code: "DELETE_FAILED",
+                        message: error?.localizedDescription ?? "不明なエラー",
+                        details: nil
+                    ))
+                }
+                return
+            }
+
+            // Step 2: 最近削除した項目から完全削除
+            // PHAssetCollectionSubtype.smartAlbumRecentlyDeleted は iOS 18.5 SDK から
+            // 削除されたが rawValue=206 でアルバム自体には引き続きアクセス可能
+            let rdSubtype = PHAssetCollectionSubtype(rawValue: 206)
+            let rdCollections = PHAssetCollection.fetchAssetCollections(
+                with: .smartAlbum, subtype: rdSubtype, options: nil
+            )
+            guard rdCollections.count > 0 else {
+                // 最近削除した項目にアクセス不可 → 通常削除のみで完了
+                DispatchQueue.main.async { result(true) }
+                return
+            }
+
+            let rdOptions = PHFetchOptions()
+            rdOptions.includeAllBurstAssets = true
+            let rdAssets = PHAsset.fetchAssets(withLocalIdentifiers: localIds, options: rdOptions)
+            guard rdAssets.count > 0 else {
+                DispatchQueue.main.async { result(true) }
+                return
+            }
+
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.deleteAssets(rdAssets)
+            }) { _, _ in
+                DispatchQueue.main.async { result(true) }
             }
         }
     }
