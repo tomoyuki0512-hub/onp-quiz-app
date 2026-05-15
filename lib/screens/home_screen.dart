@@ -197,9 +197,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'iOSの確認ダイアログが表示されます。「削除」をタップして許可してください。',
-              style: TextStyle(
+            Text(
+              _permanentlyDelete
+                  ? 'iOSの確認ダイアログが2回表示されます。両方で「削除」をタップして許可してください。'
+                  : 'iOSの確認ダイアログが表示されます。「削除」をタップして許可してください。',
+              style: const TextStyle(
                 fontSize: 12,
                 color: CupertinoColors.secondaryLabel,
               ),

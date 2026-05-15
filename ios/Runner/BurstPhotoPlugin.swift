@@ -48,6 +48,21 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
         }
     }
 
+    // MARK: - Common Helper
+
+    // PHAsset.fetchAssets(withLocalIdentifiers:options:) ignores includeAllBurstAssets,
+    // so non-representative burst frames can't be found that way.
+    // This helper fetches all assets with the flag enabled, then filters by ID.
+    private func fetchAssets(matchingIds ids: Set<String>) -> [PHAsset] {
+        let opts = PHFetchOptions()
+        opts.includeAllBurstAssets = true
+        var matched: [PHAsset] = []
+        PHAsset.fetchAssets(with: opts).enumerateObjects { asset, _, _ in
+            if ids.contains(asset.localIdentifier) { matched.append(asset) }
+        }
+        return matched
+    }
+
     // MARK: - Permission
 
     private func requestPermission(result: @escaping FlutterResult) {
@@ -88,29 +103,22 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
 
             let options = PHFetchOptions()
             options.includeAllBurstAssets = true
-            let fetchResult = PHAsset.fetchAssets(with: options)
-
-            fetchResult.enumerateObjects { asset, _, _ in
+            PHAsset.fetchAssets(with: options).enumerateObjects { asset, _, _ in
                 guard let burstId = asset.burstIdentifier else { return }
-                if allGroups[burstId] == nil {
-                    allGroups[burstId] = []
-                }
+                if allGroups[burstId] == nil { allGroups[burstId] = [] }
                 allGroups[burstId]!.append(asset)
             }
 
             let payload: [[String: Any]] = allGroups.compactMap { (burstId, assets) in
                 guard assets.count >= 2 else { return nil }
-                let assetIds = assets.map { $0.localIdentifier }
                 let representative = assets.first(where: { $0.representsBurst }) ?? assets.first
-                let bestPickId = representative?.localIdentifier
-                let createdAt = representative?.creationDate.map { Int($0.timeIntervalSince1970) }
                 return [
                     "burstId": burstId,
-                    "assetIds": assetIds,
-                    "bestPickId": bestPickId as Any,
+                    "assetIds": assets.map { $0.localIdentifier },
+                    "bestPickId": representative?.localIdentifier as Any,
                     "count": assets.count,
                     "isRecentlyDeleted": false,
-                    "createdAt": createdAt as Any
+                    "createdAt": representative?.creationDate.map { Int($0.timeIntervalSince1970) } as Any
                 ]
             }.sorted {
                 let a = $0["createdAt"] as? Int ?? 0
@@ -118,32 +126,15 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                 return a < b
             }
 
-            DispatchQueue.main.async {
-                result(payload)
-            }
+            DispatchQueue.main.async { result(payload) }
         }
     }
 
     // MARK: - Delete (→ 最近削除した項目へ移動)
 
     private func deleteAssets(localIds: [String], result: @escaping FlutterResult) {
-        let localIdSet = Set(localIds)
-
-        // withLocalIdentifiers は includeAllBurstAssets を無視するため非代表フレームが取得できない。
-        // getBurstGroups と同じ全件取得 + 列挙フィルタで確実に取得する。
-        let options = PHFetchOptions()
-        options.includeAllBurstAssets = true
-        let allAssets = PHAsset.fetchAssets(with: options)
-        var assetsToDelete: [PHAsset] = []
-        allAssets.enumerateObjects { asset, _, _ in
-            if localIdSet.contains(asset.localIdentifier) {
-                assetsToDelete.append(asset)
-            }
-        }
-        guard !assetsToDelete.isEmpty else {
-            result(true)
-            return
-        }
+        let assetsToDelete = fetchAssets(matchingIds: Set(localIds))
+        guard !assetsToDelete.isEmpty else { result(true); return }
 
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest.deleteAssets(assetsToDelete as NSArray)
@@ -164,11 +155,9 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
 
     // MARK: - Find Recently Deleted Album
 
-    /// 「最近削除した項目」スマートアルバムを検索する。
-    /// PHAssetCollectionSubtype.smartAlbumRecentlyDeleted は公開SDKに存在しないため、
-    /// 全スマートアルバムを列挙し、プライベート定数の rawValue (=1000000201) または
-    /// ローカライズされたタイトルで判定する。
-    /// （rawValue 206 は smartAlbumRecentlyAdded であって RecentlyDeleted ではない点に注意）
+    // PHAssetCollectionSubtype.smartAlbumRecentlyDeleted is not in the public SDK.
+    // rawValue 1000000201 is the private constant; localized title is a fallback.
+    // (rawValue 206 is smartAlbumRecentlyAdded — not Recently Deleted.)
     private func findRecentlyDeletedCollection() -> PHAssetCollection? {
         let all = PHAssetCollection.fetchAssetCollections(
             with: .smartAlbum, subtype: .any, options: nil
@@ -206,28 +195,13 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
         return found
     }
 
-    // MARK: - Permanently Delete (最近削除した項目を経由して完全削除)
+    // MARK: - Permanently Delete
 
     private func permanentlyDeleteAssets(localIds: [String], result: @escaping FlutterResult) {
-        let localIdSet = Set(localIds)
+        let assetsToDelete = fetchAssets(matchingIds: Set(localIds))
+        guard !assetsToDelete.isEmpty else { result(true); return }
 
-        // withLocalIdentifiers は includeAllBurstAssets を無視するため非代表フレームが取得できない。
-        // getBurstGroups と同じ全件取得 + 列挙フィルタで確実に取得する。
-        let options = PHFetchOptions()
-        options.includeAllBurstAssets = true
-        let allAssets = PHAsset.fetchAssets(with: options)
-        var assetsToDelete: [PHAsset] = []
-        allAssets.enumerateObjects { asset, _, _ in
-            if localIdSet.contains(asset.localIdentifier) {
-                assetsToDelete.append(asset)
-            }
-        }
-        guard !assetsToDelete.isEmpty else {
-            result(true)
-            return
-        }
-
-        // Step 1: 通常削除 → 最近削除した項目へ移動
+        // Step 1: move to Recently Deleted (iOS system dialog #1)
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest.deleteAssets(assetsToDelete as NSArray)
         }) { success, error in
@@ -242,16 +216,14 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                 return
             }
 
-            // Step 2: 最近削除した項目から完全削除
+            // Step 2: permanently delete from Recently Deleted (iOS system dialog #2)
             guard let rdCollection = self.findRecentlyDeletedCollection() else {
-                // 最近削除した項目にアクセス不可 → 通常削除のみで完了
                 DispatchQueue.main.async { result(true) }
                 return
             }
 
-            // step 1 後は localIdentifier でメインライブラリから検索しても 0 件になるため
-            // 最近削除したアルバム内を predicate でフィルタして取得する。
-            // includeAllBurstAssets はメインライブラリのバースト写真を混入させるため使わない。
+            // After step 1 the assets are no longer in the main library,
+            // so we query inside the Recently Deleted collection by ID.
             let rdOptions = PHFetchOptions()
             rdOptions.predicate = NSPredicate(format: "localIdentifier IN %@", localIds)
             let rdAssets = PHAsset.fetchAssets(in: rdCollection, options: rdOptions)
@@ -276,8 +248,8 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                 DispatchQueue.main.async { result(0) }
                 return
             }
-            // includeAllBurstAssets を使うとメインライブラリのバースト写真まで
-            // 混入するため、コレクション内のみを対象にするオプションなしで取得する
+            // Do NOT use includeAllBurstAssets here — it would pull in main-library
+            // burst frames and corrupt the count / unintentionally delete them.
             let rdAssets = PHAsset.fetchAssets(in: rdCollection, options: nil)
             let count = rdAssets.count
             guard count > 0 else {
@@ -302,13 +274,10 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
         }
     }
 
-    // MARK: - Get Asset Data (バースト写真含む全アセットのサムネイル＋メタデータ取得)
+    // MARK: - Get Asset Data
 
     private func getAssetData(assetId: String, size: Int, result: @escaping FlutterResult) {
-        let options = PHFetchOptions()
-        options.includeAllBurstAssets = true
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: options)
-        guard let asset = fetchResult.firstObject else {
+        guard let asset = fetchAssets(matchingIds: [assetId]).first else {
             result(nil)
             return
         }

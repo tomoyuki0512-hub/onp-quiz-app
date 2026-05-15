@@ -46,11 +46,7 @@ class _BurstListScreenState extends State<BurstListScreen> {
     );
 
     if (done == true && mounted) {
-      setState(() {
-        _remaining.remove(group);
-        _completedCount++;
-      });
-      _syncWithService();
+      await _syncWithService();
     }
   }
 
@@ -60,7 +56,9 @@ class _BurstListScreenState extends State<BurstListScreen> {
       if (!mounted) return;
       final freshBurstIds = {for (final g in fresh) g.burstId};
       setState(() {
+        final before = _remaining.length;
         _remaining.removeWhere((g) => !freshBurstIds.contains(g.burstId));
+        _completedCount += before - _remaining.length;
       });
     } catch (_) {}
   }
@@ -110,9 +108,11 @@ class _BurstListScreenState extends State<BurstListScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'iOSの確認ダイアログが表示されます。「削除」をタップしてください。',
-              style: TextStyle(
+            Text(
+              permanently
+                  ? 'iOSの確認ダイアログが2回表示されます。両方で「削除」をタップしてください。'
+                  : 'iOSの確認ダイアログが表示されます。「削除」をタップしてください。',
+              style: const TextStyle(
                 fontSize: 12,
                 color: CupertinoColors.secondaryLabel,
               ),
@@ -150,10 +150,6 @@ class _BurstListScreenState extends State<BurstListScreen> {
 
       if (success) {
         setState(() {
-          for (final g in selected) {
-            _remaining.remove(g);
-            _completedCount++;
-          }
           _selectedBurstIds.clear();
           _isSelectMode = false;
         });
