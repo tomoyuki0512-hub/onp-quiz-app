@@ -107,12 +107,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final confirmed = await showCupertinoDialog<bool>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('最近削除した項目を空にする'),
+        title: const Text('バースト写真を完全削除'),
         content: const Column(
           children: [
             SizedBox(height: 8),
             Text(
-              '「最近削除した項目」内の写真・動画をすべて完全削除します。',
+              '「最近削除した項目」にあるバースト写真をすべて完全削除します。\n\nバースト写真以外の写真・動画は削除されません。',
               style: TextStyle(fontSize: 15),
             ),
             SizedBox(height: 6),
@@ -628,7 +628,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Icon(CupertinoIcons.trash, size: 18, color: CupertinoColors.destructiveRed),
               SizedBox(width: 8),
               Text(
-                '最近削除した項目を空にする',
+                '最近削除したバースト写真を空にする',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -640,7 +640,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          '「最近削除した項目」内の写真・動画をすべて完全削除します',
+          '「最近削除した項目」のバースト写真のみを完全削除します（他の写真は対象外）',
           style: TextStyle(
             fontSize: 12,
             color: CupertinoColors.secondaryLabel,

@@ -259,13 +259,22 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             let rdOptions = PHFetchOptions()
             rdOptions.includeAllBurstAssets = true
             let rdAssets = PHAsset.fetchAssets(in: rdCollection, options: rdOptions)
-            let count = rdAssets.count
+
+            // バースト写真（burstIdentifier を持つもの）のみ対象とする
+            // 関係ない写真・動画を誤って削除しないよう保護
+            var burstAssets: [PHAsset] = []
+            rdAssets.enumerateObjects { asset, _, _ in
+                if asset.burstIdentifier != nil {
+                    burstAssets.append(asset)
+                }
+            }
+            let count = burstAssets.count
             guard count > 0 else {
                 DispatchQueue.main.async { result(0) }
                 return
             }
             PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.deleteAssets(rdAssets)
+                PHAssetChangeRequest.deleteAssets(burstAssets as NSArray)
             }) { success, error in
                 DispatchQueue.main.async {
                     if success {
