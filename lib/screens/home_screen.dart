@@ -60,36 +60,24 @@ class _HomeScreenState extends State<HomeScreen> {
     showCupertinoDialog<void>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('削除モードの違い'),
+        title: const Text('iOSのバースト写真の削除について'),
         content: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(height: 10),
             Text(
-              'OFF（最近削除した項目へ移動）',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-            SizedBox(height: 4),
-            Text(
-              '写真を「最近削除した項目」に移動します。30日間は復元可能です。',
+              'バースト写真（連写）の非代表フレームはiOSの仕様で「最近削除した項目」には移動されず、即座に完全削除されます。',
               style: TextStyle(fontSize: 13),
             ),
             SizedBox(height: 10),
             Text(
-              'ON（即座に完全削除）',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: CupertinoColors.destructiveRed,
-              ),
+              '「実際に削除する」スイッチについて',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             SizedBox(height: 4),
             Text(
-              '⚠️ 「最近削除した項目」を経由せず即座に完全削除します。元に戻せません。',
-              style: TextStyle(
-                fontSize: 13,
-                color: CupertinoColors.destructiveRed,
-              ),
+              'OFF: iOSのおすすめ写真（代表フレーム）が削除対象の場合のみ最近削除した項目に30日間保存されます。\nON: 代表フレームも即座に完全削除します。',
+              style: TextStyle(fontSize: 13),
             ),
           ],
         ),
@@ -197,21 +185,15 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const SizedBox(height: 8),
             Text(
-              _permanentlyDelete
-                  ? '$totalKeep枚を残し、$totalDelete枚を完全削除します。'
-                  : '$totalKeep枚を残し、$totalDelete枚を最近削除した項目に移動します。',
+              '$totalKeep枚を残し、$totalDelete枚を削除します。',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 6),
-            Text(
-              _permanentlyDelete
-                  ? '⚠️ 完全削除します。元に戻せません。'
-                  : '30日後に自動削除されます。',
+            const Text(
+              '⚠️ バースト写真はiOSの仕様で最近削除した項目には移動されません。削除後は元に戻せません。',
               style: TextStyle(
                 fontSize: 13,
-                color: _permanentlyDelete
-                    ? CupertinoColors.destructiveRed
-                    : CupertinoColors.secondaryLabel,
+                color: CupertinoColors.destructiveRed,
               ),
             ),
             const SizedBox(height: 6),
@@ -273,9 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text(errorMessage == null ? '完了！' : '削除エラー'),
         content: Text(
           errorMessage == null
-              ? _permanentlyDelete
-                  ? '$totalKeep枚を残して$deletedCount枚を完全削除しました。'
-                  : '$totalKeep枚を残して$deletedCount枚を最近削除した項目に移動しました。'
+              ? '$totalKeep枚を残して$deletedCount枚を削除しました。'
               : 'エラーが発生しました:\n$errorMessage',
         ),
         actions: [
@@ -429,15 +409,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            _permanentlyDelete
-                ? '⚠️ 最近削除した項目を経由せず即座に完全削除（元に戻せません）'
-                : '削除した写真は最近削除した項目に移動されます（30日間復元可能）',
+          const Text(
+            '⚠️ バースト写真はiOSの仕様で最近削除した項目には移動されません',
             style: TextStyle(
               fontSize: 12,
-              color: _permanentlyDelete
-                  ? CupertinoColors.destructiveRed
-                  : CupertinoColors.secondaryLabel,
+              color: CupertinoColors.destructiveRed,
             ),
           ),
         ],

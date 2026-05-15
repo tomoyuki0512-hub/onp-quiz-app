@@ -98,21 +98,15 @@ class _BurstListScreenState extends State<BurstListScreen> {
           children: [
             const SizedBox(height: 8),
             Text(
-              permanently
-                  ? '${selected.length}グループのベストショット各1枚を残して、$deleteCount枚を完全削除します。'
-                  : '${selected.length}グループのベストショット各1枚を残して、$deleteCount枚を最近削除した項目に移動します。',
+              '${selected.length}グループのベストショット各1枚を残して、$deleteCount枚を削除します。',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 6),
-            Text(
-              permanently
-                  ? '⚠️ 完全削除します。元に戻せません。'
-                  : '30日後に自動削除されます。',
+            const Text(
+              '⚠️ バースト写真はiOSの仕様で最近削除した項目には移動されません。削除後は元に戻せません。',
               style: TextStyle(
                 fontSize: 13,
-                color: permanently
-                    ? CupertinoColors.destructiveRed
-                    : CupertinoColors.secondaryLabel,
+                color: CupertinoColors.destructiveRed,
               ),
             ),
             const SizedBox(height: 6),
@@ -131,9 +125,9 @@ class _BurstListScreenState extends State<BurstListScreen> {
             child: const Text('キャンセル'),
           ),
           CupertinoDialogAction(
-            isDestructiveAction: permanently,
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(permanently ? '完全削除する' : '移動する'),
+            child: const Text('削除する'),
           ),
         ],
       ),
@@ -165,7 +159,7 @@ class _BurstListScreenState extends State<BurstListScreen> {
         });
         await _syncWithService();
         if (!mounted) return;
-        _showSuccessDialog(selected.length, permanently);
+        _showSuccessDialog(selected.length);
       } else {
         _showErrorDialog('削除に失敗しました。もう一度お試しください。');
       }
@@ -177,16 +171,12 @@ class _BurstListScreenState extends State<BurstListScreen> {
     }
   }
 
-  void _showSuccessDialog(int groupCount, bool permanently) {
+  void _showSuccessDialog(int groupCount) {
     showCupertinoDialog<void>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
         title: const Text('完了'),
-        content: Text(
-          permanently
-              ? '$groupCount グループを完全削除しました。'
-              : '$groupCount グループを最近削除した項目に移動しました。',
-        ),
+        content: Text('$groupCount グループを削除しました。'),
         actions: [
           CupertinoDialogAction(
             onPressed: () => Navigator.pop(ctx),
@@ -292,7 +282,6 @@ class _BurstListScreenState extends State<BurstListScreen> {
   Widget _buildSelectionBar() {
     final count = _selectedBurstIds.length;
     final allSelected = count == _remaining.length;
-    final permanently = widget.permanentlyDelete;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -329,7 +318,7 @@ class _BurstListScreenState extends State<BurstListScreen> {
               borderRadius: BorderRadius.circular(12),
               child: Text(
                 count > 0
-                    ? '$count グループを${permanently ? "完全削除" : "移動"}'
+                    ? '$count グループを削除'
                     : 'グループを選択してください',
                 style: const TextStyle(
                   fontSize: 15,

@@ -51,21 +51,15 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
           children: [
             const SizedBox(height: 8),
             Text(
-              permanently
-                  ? 'この写真を残して、他の$deleteCount枚を完全削除します。'
-                  : 'この写真を残して、他の$deleteCount枚を最近削除した項目に移動します。',
+              'この写真を残して、他の$deleteCount枚を削除します。',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 6),
-            Text(
-              permanently
-                  ? '⚠️ 完全削除します。元に戻せません。'
-                  : '30日後に自動削除されます。',
+            const Text(
+              '⚠️ バースト写真はiOSの仕様で最近削除した項目には移動されません。削除後は元に戻せません。',
               style: TextStyle(
                 fontSize: 13,
-                color: permanently
-                    ? CupertinoColors.destructiveRed
-                    : CupertinoColors.secondaryLabel,
+                color: CupertinoColors.destructiveRed,
               ),
             ),
             const SizedBox(height: 6),
@@ -84,9 +78,9 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
             child: const Text('キャンセル'),
           ),
           CupertinoDialogAction(
-            isDestructiveAction: permanently,
+            isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(permanently ? '完全削除する' : '移動する'),
+            child: const Text('削除する'),
           ),
         ],
       ),
