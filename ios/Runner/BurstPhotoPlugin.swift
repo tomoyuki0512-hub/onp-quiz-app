@@ -256,25 +256,16 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                 DispatchQueue.main.async { result(0) }
                 return
             }
-            let rdOptions = PHFetchOptions()
-            rdOptions.includeAllBurstAssets = true
-            let rdAssets = PHAsset.fetchAssets(in: rdCollection, options: rdOptions)
-
-            // バースト写真（burstIdentifier を持つもの）のみ対象とする
-            // 関係ない写真・動画を誤って削除しないよう保護
-            var burstAssets: [PHAsset] = []
-            rdAssets.enumerateObjects { asset, _, _ in
-                if asset.burstIdentifier != nil {
-                    burstAssets.append(asset)
-                }
-            }
-            let count = burstAssets.count
+            // includeAllBurstAssets を使うとメインライブラリのバースト写真まで
+            // 混入するため、コレクション内のみを対象にするオプションなしで取得する
+            let rdAssets = PHAsset.fetchAssets(in: rdCollection, options: nil)
+            let count = rdAssets.count
             guard count > 0 else {
                 DispatchQueue.main.async { result(0) }
                 return
             }
             PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.deleteAssets(burstAssets as NSArray)
+                PHAssetChangeRequest.deleteAssets(rdAssets)
             }) { success, error in
                 DispatchQueue.main.async {
                     if success {
