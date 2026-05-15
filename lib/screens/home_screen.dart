@@ -612,9 +612,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 32),
-        const Divider(),
-        const SizedBox(height: 16),
+        const SizedBox(height: 40),
+        Container(
+          height: 0.5,
+          color: CupertinoColors.separator.resolveFrom(context),
+        ),
+        const SizedBox(height: 20),
         CupertinoButton(
           onPressed: _emptyRecentlyDeleted,
           color: CupertinoColors.systemRed.withOpacity(0.08),
