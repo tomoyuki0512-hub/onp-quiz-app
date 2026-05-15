@@ -53,14 +53,14 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
             Text(
               permanently
                   ? 'この写真を残して、他の$deleteCount枚を完全削除します。'
-                  : 'この写真を選択します（他の$deleteCount枚は削除されません）。',
+                  : 'この写真を残して、他の$deleteCount枚を最近削除した項目に移動します。',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 6),
             Text(
               permanently
-                  ? '⚠️ iOSの仕様上、バースト写真は完全削除されます。元に戻せません。'
-                  : '確認モードです。実際に削除するにはホームで「実際に削除する」をONにしてください。',
+                  ? '⚠️ 完全削除します。元に戻せません。'
+                  : '30日後に自動削除されます。',
               style: TextStyle(
                 fontSize: 13,
                 color: permanently
@@ -68,16 +68,14 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
                     : CupertinoColors.secondaryLabel,
               ),
             ),
-            if (permanently) ...[
-              const SizedBox(height: 6),
-              const Text(
-                'iOSの確認ダイアログが表示されます。「削除」をタップしてください。',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.secondaryLabel,
-                ),
+            const SizedBox(height: 6),
+            const Text(
+              'iOSの確認ダイアログが表示されます。「削除」をタップしてください。',
+              style: TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.secondaryLabel,
               ),
-            ],
+            ),
           ],
         ),
         actions: [
@@ -88,7 +86,7 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
           CupertinoDialogAction(
             isDestructiveAction: permanently,
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(permanently ? '完全削除する' : 'この写真に決める'),
+            child: Text(permanently ? '完全削除する' : '移動する'),
           ),
         ],
       ),
@@ -96,15 +94,11 @@ class _ManualSelectScreenState extends State<ManualSelectScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    // 確認モード: 削除せずにそのまま処理済みとしてスタック解除
-    if (!permanently) {
-      Navigator.pop(context, true);
-      return;
-    }
-
     setState(() => _isDeleting = true);
     try {
-      final success = await widget.service.deleteAssets(idsToDelete);
+      final success = permanently
+          ? await widget.service.permanentlyDeleteAssets(idsToDelete)
+          : await widget.service.deleteAssets(idsToDelete);
 
       if (!mounted) return;
 

@@ -60,23 +60,23 @@ class _HomeScreenState extends State<HomeScreen> {
     showCupertinoDialog<void>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('実際に削除するとは？'),
+        title: const Text('削除モードの違い'),
         content: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(height: 10),
             Text(
-              'OFF（デフォルト・確認モード）',
+              'OFF（最近削除した項目へ移動）',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             SizedBox(height: 4),
             Text(
-              'バースト写真は削除されません。グループの整理状況を確認するだけです。やり直しが自由にできます。',
+              '写真を「最近削除した項目」に移動します。30日間は復元可能です。',
               style: TextStyle(fontSize: 13),
             ),
             SizedBox(height: 10),
             Text(
-              'ON（削除モード）',
+              'ON（即座に完全削除）',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -85,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             SizedBox(height: 4),
             Text(
-              '⚠️ iOSの仕様上、バースト写真（連写の各フレーム）は「最近削除した項目」を経由せず直接完全削除されます。元に戻せません。',
+              '⚠️ 「最近削除した項目」を経由せず即座に完全削除します。元に戻せません。',
               style: TextStyle(
                 fontSize: 13,
                 color: CupertinoColors.destructiveRed,
@@ -101,6 +101,85 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _emptyRecentlyDeleted() async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('最近削除した項目を空にする'),
+        content: const Column(
+          children: [
+            SizedBox(height: 8),
+            Text(
+              '「最近削除した項目」内の写真・動画をすべて完全削除します。',
+              style: TextStyle(fontSize: 15),
+            ),
+            SizedBox(height: 6),
+            Text(
+              '⚠️ この操作は元に戻せません。',
+              style: TextStyle(
+                fontSize: 13,
+                color: CupertinoColors.destructiveRed,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('キャンセル'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('完全削除する'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final count = await widget.service.emptyRecentlyDeleted();
+      if (!mounted) return;
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: const Text('完了'),
+          content: Text(
+            count > 0
+                ? '$count枚を完全削除しました。'
+                : '最近削除した項目に写真はありませんでした。',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showCupertinoDialog<void>(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: const Text('エラー'),
+          content: Text('$e'),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _runAutoClean() async {
@@ -120,14 +199,14 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               _permanentlyDelete
                   ? '$totalKeep枚を残し、$totalDelete枚を完全削除します。'
-                  : '$totalKeep枚のベストショットを確認します（写真は削除されません）。',
+                  : '$totalKeep枚を残し、$totalDelete枚を最近削除した項目に移動します。',
               style: const TextStyle(fontSize: 15),
             ),
             const SizedBox(height: 6),
             Text(
               _permanentlyDelete
-                  ? '⚠️ iOSの仕様上、バースト写真は完全削除されます。元に戻せません。'
-                  : '「実際に削除する」をONにすると完全削除できます。',
+                  ? '⚠️ 完全削除します。元に戻せません。'
+                  : '30日後に自動削除されます。',
               style: TextStyle(
                 fontSize: 13,
                 color: _permanentlyDelete
@@ -135,16 +214,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     : CupertinoColors.secondaryLabel,
               ),
             ),
-            if (_permanentlyDelete) ...[
-              const SizedBox(height: 6),
-              const Text(
-                'iOSの確認ダイアログが表示されます。「削除」をタップして許可してください。',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.secondaryLabel,
-                ),
+            const SizedBox(height: 6),
+            const Text(
+              'iOSの確認ダイアログが表示されます。「削除」をタップして許可してください。',
+              style: TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.secondaryLabel,
               ),
-            ],
+            ),
           ],
         ),
         actions: [
@@ -155,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
           CupertinoDialogAction(
             isDestructiveAction: _permanentlyDelete,
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(_permanentlyDelete ? '完全削除する' : '確認する'),
+            child: Text(_permanentlyDelete ? '完全削除する' : '移動する'),
           ),
         ],
       ),
@@ -163,30 +240,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    // 確認モード（非削除）: ダイアログ表示のみ、グループを再読込
-    if (!_permanentlyDelete) {
-      await showCupertinoDialog<void>(
-        context: context,
-        builder: (ctx) => CupertinoAlertDialog(
-          title: const Text('確認完了'),
-          content: Text(
-            '$totalKeep枚のベストショットを確認しました。\n実際に削除するには「実際に削除する」をONにしてください。',
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     // 全グループの ID をまとめて1回の API 呼び出しに集約
-    // （グループごとに呼ぶと iOS 確認ダイアログがグループ数だけ出てしまうため）
     final allIdsToDelete = <String>[];
     for (final group in groups) {
       allIdsToDelete.addAll(
@@ -199,7 +255,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       if (allIdsToDelete.isNotEmpty) {
-        final ok = await widget.service.deleteAssets(allIdsToDelete);
+        final ok = _permanentlyDelete
+            ? await widget.service.permanentlyDeleteAssets(allIdsToDelete)
+            : await widget.service.deleteAssets(allIdsToDelete);
         if (ok) deletedCount = allIdsToDelete.length;
       }
     } catch (e) {
@@ -215,7 +273,9 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Text(errorMessage == null ? '完了！' : '削除エラー'),
         content: Text(
           errorMessage == null
-              ? '$totalKeep枚を残して$deletedCount枚を完全削除しました。'
+              ? _permanentlyDelete
+                  ? '$totalKeep枚を残して$deletedCount枚を完全削除しました。'
+                  : '$totalKeep枚を残して$deletedCount枚を最近削除した項目に移動しました。'
               : 'エラーが発生しました:\n$errorMessage',
         ),
         actions: [
@@ -371,8 +431,8 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 6),
           Text(
             _permanentlyDelete
-                ? '⚠️ iOSの仕様上、バースト写真は完全削除されます（元に戻せません）'
-                : '確認モード：写真は削除されません。内容を確認できます。',
+                ? '⚠️ 最近削除した項目を経由せず即座に完全削除（元に戻せません）'
+                : '削除した写真は最近削除した項目に移動されます（30日間復元可能）',
             style: TextStyle(
               fontSize: 12,
               color: _permanentlyDelete
@@ -546,6 +606,38 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 8),
         const Text(
           'グループごとに残したい1枚を自分で選択します',
+          style: TextStyle(
+            fontSize: 12,
+            color: CupertinoColors.secondaryLabel,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 32),
+        const Divider(),
+        const SizedBox(height: 16),
+        CupertinoButton(
+          onPressed: _emptyRecentlyDeleted,
+          color: CupertinoColors.systemRed.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(CupertinoIcons.trash, size: 18, color: CupertinoColors.destructiveRed),
+              SizedBox(width: 8),
+              Text(
+                '最近削除した項目を空にする',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: CupertinoColors.destructiveRed,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '「最近削除した項目」内の写真・動画をすべて完全削除します',
           style: TextStyle(
             fontSize: 12,
             color: CupertinoColors.secondaryLabel,

@@ -41,6 +41,8 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             }
             let size = args["size"] as? Int ?? 1080
             getAssetData(assetId: assetId, size: size, result: result)
+        case "emptyRecentlyDeleted":
+            emptyRecentlyDeleted(result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -210,6 +212,47 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                 PHAssetChangeRequest.deleteAssets(rdAssets)
             }) { _, _ in
                 DispatchQueue.main.async { result(true) }
+            }
+        }
+    }
+
+    // MARK: - Empty Recently Deleted
+
+    private func emptyRecentlyDeleted(result: @escaping FlutterResult) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let rdSubtype = PHAssetCollectionSubtype(rawValue: 206) else {
+                DispatchQueue.main.async { result(0) }
+                return
+            }
+            let rdCollections = PHAssetCollection.fetchAssetCollections(
+                with: .smartAlbum, subtype: rdSubtype, options: nil
+            )
+            guard let rdCollection = rdCollections.firstObject else {
+                DispatchQueue.main.async { result(0) }
+                return
+            }
+            let rdOptions = PHFetchOptions()
+            rdOptions.includeAllBurstAssets = true
+            let rdAssets = PHAsset.fetchAssets(in: rdCollection, options: rdOptions)
+            let count = rdAssets.count
+            guard count > 0 else {
+                DispatchQueue.main.async { result(0) }
+                return
+            }
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.deleteAssets(rdAssets)
+            }) { success, error in
+                DispatchQueue.main.async {
+                    if success {
+                        result(count)
+                    } else {
+                        result(FlutterError(
+                            code: "DELETE_FAILED",
+                            message: error?.localizedDescription ?? "不明なエラー",
+                            details: nil
+                        ))
+                    }
+                }
             }
         }
     }
