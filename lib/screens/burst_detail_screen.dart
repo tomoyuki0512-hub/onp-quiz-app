@@ -19,123 +19,76 @@ class BurstDetailScreen extends StatefulWidget {
 
 class _BurstDetailScreenState extends State<BurstDetailScreen> {
   final Set<String> _selected = {};
-  bool _isDeleting = false;
+  bool _isProcessing = false;
 
-  int get _toDeleteCount =>
-      widget.group.assetIds.where((id) => !_selected.contains(id)).length;
-
-  // 代表フレームが削除対象に含まれているか。
-  // 含まれている場合、iOS がバースト全体をカスケード削除するため要注意。
-  bool get _deletingRepresentative {
-    final repId = widget.group.representativeId;
-    if (repId == null) return false;
-    return !_selected.contains(repId);
-  }
-
-  Future<void> _deleteUnselected() async {
+  Future<void> _saveAndDeleteBurst() async {
     if (_selected.isEmpty) {
-      _showDialog('写真を選択してください', '残したい写真を1枚以上選択してから削除してください。');
+      _showDialog('写真を選択してください', '保存する写真を1枚以上選択してください。');
       return;
     }
 
-    final toDelete =
-        widget.group.assetIds.where((id) => !_selected.contains(id)).toList();
-    if (toDelete.isEmpty) {
-      _showDialog('削除対象なし', 'すべての写真が選択されているため削除する写真がありません。');
-      return;
-    }
-
-    if (_deletingRepresentative) {
-      // 代表フレームが削除対象 → iOS カスケードで全フレームが消える
-      final confirmed = await showCupertinoDialog<bool>(
-        context: context,
-        builder: (ctx) => CupertinoAlertDialog(
-          title: const Text('注意：全フレームが削除されます'),
-          content: Column(
-            children: [
-              const SizedBox(height: 8),
-              Text(
-                '代表フレーム（★）が削除対象に含まれています。'
-                'iOSの仕様により、選択した${_selected.length}枚を含む'
-                'バーストの全${widget.group.count}枚が削除されます。',
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                '選択した写真を残したい場合は、代表フレーム（★）を必ず選択してください。',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.secondaryLabel,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('キャンセル'),
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('保存して削除'),
+        content: Column(
+          children: [
+            const SizedBox(height: 8),
+            Text(
+              '選択した${_selected.length}枚を通常の写真として保存し、'
+              'バーストの全${widget.group.count}枚を削除します。',
             ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('すべて削除'),
+            const SizedBox(height: 6),
+            const Text(
+              '保存後にiOSの確認ダイアログが表示されます。「削除」をタップしてください。',
+              style: TextStyle(
+                fontSize: 12,
+                color: CupertinoColors.secondaryLabel,
+              ),
             ),
           ],
         ),
-      );
-      if (confirmed != true || !mounted) return;
-      await _performDelete(widget.group.assetIds);
-    } else {
-      // 安全なパス：非代表フレームのみ削除（カスケードなし）
-      final confirmed = await showCupertinoDialog<bool>(
-        context: context,
-        builder: (ctx) => CupertinoAlertDialog(
-          title: const Text('写真を削除'),
-          content: Column(
-            children: [
-              const SizedBox(height: 8),
-              Text('選択した${_selected.length}枚を残して、${toDelete.length}枚を削除します。'),
-              const SizedBox(height: 6),
-              const Text(
-                'iOSの確認ダイアログが表示されます。「削除」をタップしてください。',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.secondaryLabel,
-                ),
-              ),
-            ],
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('キャンセル'),
           ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('キャンセル'),
-            ),
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('削除'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true || !mounted) return;
-      await _performDelete(toDelete);
-    }
-  }
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('保存して削除'),
+          ),
+        ],
+      ),
+    );
 
-  Future<void> _performDelete(List<String> ids) async {
-    setState(() => _isDeleting = true);
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isProcessing = true);
     try {
-      final success = await widget.service.deleteAssets(ids);
+      // Step 1: 選択写真を通常の写真としてコピー保存
+      final saved = await widget.service.saveAssetsAsCopies(_selected.toList());
       if (!mounted) return;
-      if (success) {
+      if (!saved) {
+        _showDialog('保存失敗', '写真の保存に失敗しました。削除は行いませんでした。');
+        return;
+      }
+
+      // Step 2: バースト全体を削除
+      final deleted = await widget.service.deleteAssets(widget.group.assetIds);
+      if (!mounted) return;
+      if (deleted) {
         Navigator.pop(context, true);
       } else {
-        _showDialog('削除失敗', '削除に失敗しました。もう一度お試しください。');
+        _showDialog(
+          '削除失敗',
+          '写真は保存されましたが、バーストの削除に失敗しました。',
+        );
       }
     } catch (e) {
       if (mounted) _showDialog('エラー', '$e');
     } finally {
-      if (mounted) setState(() => _isDeleting = false);
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
@@ -165,7 +118,7 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
         middle: Text(_selected.isEmpty
             ? '${widget.group.count}枚'
             : '${_selected.length}枚選択中'),
-        trailing: _isDeleting
+        trailing: _isProcessing
             ? const CupertinoActivityIndicator(radius: 10)
             : null,
       ),
@@ -207,16 +160,11 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
   }
 
   Widget _buildBottomBar(List<String> assetIds, bool allSelected) {
-    final canDelete = _selected.isNotEmpty && _toDeleteCount > 0;
+    final canSave = _selected.isNotEmpty;
 
-    String statusText;
-    if (_selected.isEmpty) {
-      statusText = '残したい写真をタップして選択してください';
-    } else if (_deletingRepresentative) {
-      statusText = '⚠️ 代表フレーム（★）未選択：全${widget.group.count}枚が削除されます';
-    } else {
-      statusText = '${_selected.length}枚を残し、$_toDeleteCount枚を削除します';
-    }
+    final statusText = _selected.isEmpty
+        ? '保存する写真をタップして選択してください'
+        : '${_selected.length}枚を保存してバーストの${widget.group.count}枚を削除します';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -231,11 +179,9 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
         children: [
           Text(
             statusText,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 13,
-              color: _deletingRepresentative && _selected.isNotEmpty
-                  ? CupertinoColors.destructiveRed
-                  : CupertinoColors.secondaryLabel,
+              color: CupertinoColors.secondaryLabel,
             ),
             textAlign: TextAlign.center,
           ),
@@ -252,17 +198,19 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
                     _selected.addAll(assetIds);
                   }
                 }),
-                child: Text(allSelected ? '全解除' : '全選択',
-                    style: const TextStyle(fontSize: 15)),
+                child: Text(
+                  allSelected ? '全解除' : '全選択',
+                  style: const TextStyle(fontSize: 15),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: CupertinoButton.filled(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  onPressed: canDelete && !_isDeleting ? _deleteUnselected : null,
+                  onPressed: canSave && !_isProcessing ? _saveAndDeleteBurst : null,
                   borderRadius: BorderRadius.circular(12),
                   child: const Text(
-                    '選択以外を削除',
+                    '選択を保存してバーストを削除',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -330,14 +278,12 @@ class _PhotoCellState extends State<_PhotoCell> {
               color: CupertinoColors.systemBlue.withOpacity(0.3),
             ),
           ),
-          // 代表フレームバッジ
           if (widget.isRepresentative)
             Positioned(
               top: 8,
               left: 8,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: CupertinoColors.systemYellow,
                   borderRadius: BorderRadius.circular(4),
@@ -352,7 +298,6 @@ class _PhotoCellState extends State<_PhotoCell> {
                 ),
               ),
             ),
-          // 選択チェックマーク
           Positioned(
             top: 8,
             right: 8,

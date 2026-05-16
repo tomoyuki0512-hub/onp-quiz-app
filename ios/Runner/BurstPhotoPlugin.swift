@@ -34,6 +34,13 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                 return
             }
             deleteAssets(localIds: ids, result: result)
+        case "saveAssetsAsCopies":
+            guard let args = call.arguments as? [String: Any],
+                  let ids = args["assetIds"] as? [String] else {
+                result(FlutterError(code: "BAD_ARGS", message: "assetIds required", details: nil))
+                return
+            }
+            saveAssetsAsCopies(localIds: ids, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -145,6 +152,50 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             }
             DispatchQueue.main.async {
                 result(FlutterStandardTypedData(bytes: data))
+            }
+        }
+    }
+
+    // MARK: - Save Assets As Copies
+
+    // 選択したバーストフレームを通常の独立した写真としてライブラリに保存する。
+    // 原本の画像データをそのまま使うためメタデータ（撮影日時・位置情報）が保持される。
+    private func saveAssetsAsCopies(localIds: [String], result: @escaping FlutterResult) {
+        let assets = fetchAssets(matchingIds: Set(localIds))
+        guard !assets.isEmpty else { result(true); return }
+
+        let group = DispatchGroup()
+        var saveFailed = false
+
+        for asset in assets {
+            group.enter()
+            let reqOpts = PHImageRequestOptions()
+            reqOpts.deliveryMode = .highQualityFormat
+            reqOpts.isNetworkAccessAllowed = true
+
+            PHImageManager.default().requestImageDataAndOrientation(
+                for: asset, options: reqOpts
+            ) { data, _, _, _ in
+                guard let data = data else {
+                    saveFailed = true
+                    group.leave()
+                    return
+                }
+                PHPhotoLibrary.shared().performChanges({
+                    let req = PHAssetCreationRequest.forAsset()
+                    req.addResource(with: .photo, data: data, options: nil)
+                }) { success, _ in
+                    if !success { saveFailed = true }
+                    group.leave()
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            if saveFailed {
+                result(FlutterError(code: "SAVE_FAILED", message: "写真の保存に失敗しました", details: nil))
+            } else {
+                result(true)
             }
         }
     }

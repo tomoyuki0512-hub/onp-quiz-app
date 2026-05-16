@@ -27,6 +27,15 @@ class BurstPhotoService {
     return null;
   }
 
+  Future<bool> saveAssetsAsCopies(List<String> ids) async {
+    if (ids.isEmpty) return true;
+    final result = await _channel.invokeMethod<bool>(
+      'saveAssetsAsCopies',
+      {'assetIds': ids},
+    );
+    return result ?? false;
+  }
+
   Future<bool> deleteAssets(List<String> ids) async {
     if (ids.isEmpty) return true;
     final result = await _channel.invokeMethod<bool>(
