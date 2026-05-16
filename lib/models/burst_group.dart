@@ -1,6 +1,7 @@
 class BurstGroup {
   final String burstId;
   final List<String> assetIds;
+  final String? representativeId;
   final DateTime? createdAt;
   final double? latitude;
   final double? longitude;
@@ -8,6 +9,7 @@ class BurstGroup {
   const BurstGroup({
     required this.burstId,
     required this.assetIds,
+    this.representativeId,
     this.createdAt,
     this.latitude,
     this.longitude,
@@ -20,6 +22,7 @@ class BurstGroup {
     return BurstGroup(
       burstId: map['burstId'] as String,
       assetIds: List<String>.from(map['assetIds'] as List),
+      representativeId: map['representativeId'] as String?,
       createdAt: ts != null ? DateTime.fromMillisecondsSinceEpoch(ts * 1000) : null,
       latitude: (map['latitude'] as num?)?.toDouble(),
       longitude: (map['longitude'] as num?)?.toDouble(),

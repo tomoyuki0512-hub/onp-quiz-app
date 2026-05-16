@@ -106,6 +106,7 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                     "burstId": burstId,
                     "assetIds": assets.map { $0.localIdentifier },
                     "count": assets.count,
+                    "representativeId": rep.localIdentifier,
                 ]
                 if let ts = rep.creationDate {
                     dict["createdAt"] = Int(ts.timeIntervalSince1970)
