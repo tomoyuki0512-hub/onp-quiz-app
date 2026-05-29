@@ -4,6 +4,12 @@ import UIKit
 
 public class BurstPhotoPlugin: NSObject, FlutterPlugin {
 
+    /// localIdentifier -> PHAsset のキャッシュ。
+    /// getBurstGroups で全ライブラリを 1 回だけ列挙して構築し、
+    /// サムネイル取得・保存・削除はここを参照することで
+    /// 都度の全件列挙（O(全写真数)）を避ける。
+    private var assetCache: [String: PHAsset] = [:]
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
             name: "com.example.photo_deleter/burst",
@@ -27,20 +33,14 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
             }
             let size = args["size"] as? Int ?? 300
             getAssetThumbnail(assetId: assetId, size: size, result: result)
-        case "deleteAssets":
+        case "saveAndDeleteBurst":
             guard let args = call.arguments as? [String: Any],
-                  let ids = args["assetIds"] as? [String] else {
-                result(FlutterError(code: "BAD_ARGS", message: "assetIds required", details: nil))
+                  let keepIds = args["keepIds"] as? [String],
+                  let burstIds = args["burstIds"] as? [String] else {
+                result(FlutterError(code: "BAD_ARGS", message: "keepIds / burstIds required", details: nil))
                 return
             }
-            deleteAssets(localIds: ids, result: result)
-        case "saveAssetsAsCopies":
-            guard let args = call.arguments as? [String: Any],
-                  let ids = args["assetIds"] as? [String] else {
-                result(FlutterError(code: "BAD_ARGS", message: "assetIds required", details: nil))
-                return
-            }
-            saveAssetsAsCopies(localIds: ids, result: result)
+            saveAndDeleteBurst(keepIds: keepIds, burstIds: burstIds, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -48,47 +48,54 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
 
     // MARK: - Helper
 
-    // PHAsset.fetchAssets(withLocalIdentifiers:) ignores includeAllBurstAssets,
-    // so non-representative burst frames are missed. Enumerate all and filter instead.
-    private func fetchAssets(matchingIds ids: Set<String>) -> [PHAsset] {
+    /// キャッシュ優先でアセットを取得する。
+    /// キャッシュに無い ID があれば、その分だけ全列挙でフォールバック取得する。
+    /// （PHAsset.fetchAssets(withLocalIdentifiers:) は includeAllBurstAssets を
+    ///  無視するため、非代表バーストフレームを取りこぼす。列挙が確実。）
+    private func resolveAssets(for ids: [String]) -> [PHAsset] {
+        var found: [PHAsset] = []
+        var missing: Set<String> = []
+        for id in ids {
+            if let cached = assetCache[id] {
+                found.append(cached)
+            } else {
+                missing.insert(id)
+            }
+        }
+        guard !missing.isEmpty else { return found }
+
         let opts = PHFetchOptions()
         opts.includeAllBurstAssets = true
-        var matched: [PHAsset] = []
-        PHAsset.fetchAssets(with: opts).enumerateObjects { asset, _, _ in
-            if ids.contains(asset.localIdentifier) { matched.append(asset) }
+        PHAsset.fetchAssets(with: opts).enumerateObjects { [weak self] asset, _, stop in
+            if missing.contains(asset.localIdentifier) {
+                self?.assetCache[asset.localIdentifier] = asset
+                found.append(asset)
+                missing.remove(asset.localIdentifier)
+                if missing.isEmpty { stop.pointee = true }
+            }
         }
-        return matched
+        return found
     }
 
     // MARK: - Permission
 
     private func requestPermission(result: @escaping FlutterResult) {
+        let handler: (PHAuthorizationStatus) -> Void = { status in
+            DispatchQueue.main.async {
+                switch status {
+                case .authorized:    result("authorized")
+                case .limited:       result("limited")
+                case .denied:        result("denied")
+                case .restricted:    result("restricted")
+                case .notDetermined: result("notDetermined")
+                @unknown default:    result("unknown")
+                }
+            }
+        }
         if #available(iOS 14, *) {
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
-                DispatchQueue.main.async {
-                    switch status {
-                    case .authorized:    result("authorized")
-                    case .limited:       result("limited")
-                    case .denied:        result("denied")
-                    case .restricted:    result("restricted")
-                    case .notDetermined: result("notDetermined")
-                    @unknown default:    result("unknown")
-                    }
-                }
-            }
+            PHPhotoLibrary.requestAuthorization(for: .readWrite, handler: handler)
         } else {
-            PHPhotoLibrary.requestAuthorization { status in
-                DispatchQueue.main.async {
-                    switch status {
-                    case .authorized:    result("authorized")
-                    case .limited:       result("limited")
-                    case .denied:        result("denied")
-                    case .restricted:    result("restricted")
-                    case .notDetermined: result("notDetermined")
-                    @unknown default:    result("unknown")
-                    }
-                }
-            }
+            PHPhotoLibrary.requestAuthorization(handler)
         }
     }
 
@@ -97,14 +104,18 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
     private func getBurstGroups(result: @escaping FlutterResult) {
         DispatchQueue.global(qos: .userInitiated).async {
             var groups: [String: [PHAsset]] = [:]
+            var cache: [String: PHAsset] = [:]
 
             let opts = PHFetchOptions()
             opts.includeAllBurstAssets = true
             PHAsset.fetchAssets(with: opts).enumerateObjects { asset, _, _ in
                 guard let burstId = asset.burstIdentifier else { return }
-                if groups[burstId] == nil { groups[burstId] = [] }
-                groups[burstId]!.append(asset)
+                groups[burstId, default: []].append(asset)
+                cache[asset.localIdentifier] = asset
             }
+
+            // キャッシュを差し替え（以降のサムネイル/保存/削除で参照される）
+            self.assetCache = cache
 
             let payload: [[String: Any]] = groups.compactMap { (burstId, assets) in
                 guard assets.count >= 2 else { return nil }
@@ -124,7 +135,8 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
                 }
                 return dict
             }.sorted {
-                ($0["createdAt"] as? Int ?? 0) < ($1["createdAt"] as? Int ?? 0)
+                // 新しい順
+                ($0["createdAt"] as? Int ?? 0) > ($1["createdAt"] as? Int ?? 0)
             }
 
             DispatchQueue.main.async { result(payload) }
@@ -134,7 +146,7 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
     // MARK: - Get Asset Thumbnail
 
     private func getAssetThumbnail(assetId: String, size: Int, result: @escaping FlutterResult) {
-        guard let asset = fetchAssets(matchingIds: [assetId]).first else {
+        guard let asset = resolveAssets(for: [assetId]).first else {
             result(nil)
             return
         }
@@ -144,8 +156,14 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
         let reqOpts = PHImageRequestOptions()
         reqOpts.deliveryMode = .highQualityFormat
         reqOpts.isNetworkAccessAllowed = true
+        // 縮小サムネイルなので 1 回だけ最終画像を受け取る
+        reqOpts.resizeMode = .fast
 
-        manager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: reqOpts) { image, _ in
+        manager.requestImage(for: asset, targetSize: targetSize, contentMode: .aspectFill, options: reqOpts) { image, info in
+            // 低解像度の途中経過は無視し、最終画像のみ返す
+            if let isDegraded = info?[PHImageResultIsDegradedKey] as? Bool, isDegraded {
+                return
+            }
             guard let image = image, let data = image.jpegData(compressionQuality: 0.85) else {
                 DispatchQueue.main.async { result(nil) }
                 return
@@ -156,70 +174,113 @@ public class BurstPhotoPlugin: NSObject, FlutterPlugin {
         }
     }
 
-    // MARK: - Save Assets As Copies
+    // MARK: - Save Selected & Delete Burst (atomic)
 
-    // 選択したバーストフレームを通常の独立した写真としてライブラリに保存する。
-    // 原本の画像データをそのまま使うためメタデータ（撮影日時・位置情報）が保持される。
-    private func saveAssetsAsCopies(localIds: [String], result: @escaping FlutterResult) {
-        let assets = fetchAssets(matchingIds: Set(localIds))
-        guard !assets.isEmpty else { result(true); return }
+    /// 選択フレーム（keepIds）をオリジナル品質の独立した写真として保存し、
+    /// 同時にバースト全体（burstIds）を削除する。
+    ///
+    /// 保存と削除を 1 つの performChanges にまとめることで:
+    ///   - iOS の削除確認ダイアログは 1 回だけ
+    ///   - ユーザーがキャンセルした場合は保存もまとめてロールバック
+    ///     （＝コピーだけ残って重複する問題を解消）
+    private func saveAndDeleteBurst(keepIds: [String], burstIds: [String], result: @escaping FlutterResult) {
+        let burstAssets = resolveAssets(for: burstIds)
+        guard !burstAssets.isEmpty else {
+            result(FlutterError(code: "NO_ASSETS", message: "対象のバースト写真が見つかりませんでした", details: nil))
+            return
+        }
+        let keepAssets = resolveAssets(for: keepIds)
+        guard !keepAssets.isEmpty else {
+            result(FlutterError(code: "NO_SELECTION", message: "保存する写真が選択されていません", details: nil))
+            return
+        }
 
-        let group = DispatchGroup()
-        var saveFailed = false
+        // 1) 各選択フレームのオリジナルファイルデータを非同期取得
+        let manager = PHAssetResourceManager.default()
+        let dispatchGroup = DispatchGroup()
+        let lock = NSLock()
+        var items: [(data: Data, filename: String, creationDate: Date?, location: CLLocation?)] = []
+        var fetchFailed = false
 
-        for asset in assets {
-            group.enter()
-            let reqOpts = PHImageRequestOptions()
-            reqOpts.deliveryMode = .highQualityFormat
+        for asset in keepAssets {
+            let resources = PHAssetResource.assetResources(for: asset)
+            guard let resource = resources.first(where: { $0.type == .photo })
+                    ?? resources.first(where: { $0.type == .fullSizePhoto })
+                    ?? resources.first else {
+                fetchFailed = true
+                continue
+            }
+
+            dispatchGroup.enter()
+            var buffer = Data()
+            let reqOpts = PHAssetResourceRequestOptions()
             reqOpts.isNetworkAccessAllowed = true
 
-            PHImageManager.default().requestImageDataAndOrientation(
-                for: asset, options: reqOpts
-            ) { data, _, _, _ in
-                guard let data = data else {
-                    saveFailed = true
-                    group.leave()
-                    return
+            manager.requestData(
+                for: resource,
+                options: reqOpts,
+                dataReceivedHandler: { chunk in buffer.append(chunk) },
+                completionHandler: { error in
+                    lock.lock()
+                    if error != nil {
+                        fetchFailed = true
+                    } else {
+                        items.append((
+                            data: buffer,
+                            filename: resource.originalFilename,
+                            creationDate: asset.creationDate,
+                            location: asset.location
+                        ))
+                    }
+                    lock.unlock()
+                    dispatchGroup.leave()
                 }
-                PHPhotoLibrary.shared().performChanges({
-                    let req = PHAssetCreationRequest.forAsset()
-                    req.addResource(with: .photo, data: data, options: nil)
-                }) { success, _ in
-                    if !success { saveFailed = true }
-                    group.leave()
-                }
-            }
+            )
         }
 
-        group.notify(queue: .main) {
-            if saveFailed {
-                result(FlutterError(code: "SAVE_FAILED", message: "写真の保存に失敗しました", details: nil))
-            } else {
-                result(true)
-            }
-        }
-    }
-
-    // MARK: - Delete Assets
-
-    private func deleteAssets(localIds: [String], result: @escaping FlutterResult) {
-        let assets = fetchAssets(matchingIds: Set(localIds))
-        guard !assets.isEmpty else { result(true); return }
-
-        PHPhotoLibrary.shared().performChanges({
-            PHAssetChangeRequest.deleteAssets(assets as NSArray)
-        }) { success, error in
-            DispatchQueue.main.async {
-                if success {
-                    result(true)
-                } else {
-                    result(FlutterError(
-                        code: "DELETE_FAILED",
-                        message: error?.localizedDescription ?? "削除に失敗しました",
-                        details: nil
-                    ))
+        // 2) 取得完了後、保存＋削除をアトミックに実行
+        dispatchGroup.notify(queue: .global(qos: .userInitiated)) {
+            if fetchFailed || items.isEmpty {
+                DispatchQueue.main.async {
+                    result(FlutterError(code: "FETCH_FAILED",
+                                        message: "元の写真データの取得に失敗しました。削除は行っていません。",
+                                        details: nil))
                 }
+                return
             }
+
+            PHPhotoLibrary.shared().performChanges({
+                for item in items {
+                    let creation = PHAssetCreationRequest.forAsset()
+                    let options = PHAssetResourceCreationOptions()
+                    options.originalFilename = item.filename
+                    creation.addResource(with: .photo, data: item.data, options: options)
+                    // メタデータ（撮影日時・位置情報）を明示的に引き継ぐ
+                    creation.creationDate = item.creationDate
+                    creation.location = item.location
+                }
+                PHAssetChangeRequest.deleteAssets(burstAssets as NSArray)
+            }, completionHandler: { success, error in
+                DispatchQueue.main.async {
+                    if success {
+                        // 削除されたアセットをキャッシュから除去
+                        for id in burstIds { self.assetCache.removeValue(forKey: id) }
+                        result(true)
+                        return
+                    }
+                    let nsError = error as NSError?
+                    // ユーザーが iOS の削除確認をキャンセルした場合
+                    if let nsError = nsError,
+                       nsError.domain == PHPhotosErrorDomain,
+                       nsError.code == 3072 /* PHPhotosError.userCancelled */ {
+                        result(FlutterError(code: "CANCELLED", message: "キャンセルされました", details: nil))
+                    } else {
+                        result(FlutterError(code: "OP_FAILED",
+                                            message: nsError?.localizedDescription ?? "保存と削除に失敗しました",
+                                            details: nil))
+                    }
+                }
+            })
         }
     }
 }

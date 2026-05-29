@@ -21,32 +21,46 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
   final Set<String> _selected = {};
   bool _isProcessing = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // 写りの良い1枚として、iOS が選んだ代表フレームを初期選択しておく。
+    final rep = widget.group.representativeId;
+    if (rep != null && widget.group.assetIds.contains(rep)) {
+      _selected.add(rep);
+    }
+  }
+
   Future<void> _saveAndDeleteBurst() async {
     if (_selected.isEmpty) {
-      _showDialog('写真を選択してください', '保存する写真を1枚以上選択してください。');
+      _showDialog('写真を選択してください', '残す写真を1枚以上選択してください。');
       return;
     }
 
     final confirmed = await showCupertinoDialog<bool>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('保存して削除'),
-        content: Column(
-          children: [
-            const SizedBox(height: 8),
-            Text(
-              '選択した${_selected.length}枚を通常の写真として保存し、'
-              'バーストの全${widget.group.count}枚を削除します。',
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              '保存後にiOSの確認ダイアログが表示されます。「削除」をタップしてください。',
-              style: TextStyle(
-                fontSize: 12,
-                color: CupertinoColors.secondaryLabel,
+        title: const Text('残して削除'),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '選択した${_selected.length}枚をオリジナル品質の写真として保存し、'
+                'バーストの全${widget.group.count}枚を削除します。',
               ),
-            ),
-          ],
+              const SizedBox(height: 6),
+              const Text(
+                '続けると iOS の削除確認が表示されます。'
+                'キャンセルした場合は保存もされず元の状態のままです。',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: CupertinoColors.secondaryLabel,
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           CupertinoDialogAction(
@@ -56,7 +70,7 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('保存して削除'),
+            child: const Text('続ける'),
           ),
         ],
       ),
@@ -66,24 +80,23 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
 
     setState(() => _isProcessing = true);
     try {
-      // Step 1: 選択写真を通常の写真としてコピー保存
-      final saved = await widget.service.saveAssetsAsCopies(_selected.toList());
+      final result = await widget.service.saveAndDeleteBurst(
+        keepIds: _selected.toList(),
+        burstIds: widget.group.assetIds,
+      );
       if (!mounted) return;
-      if (!saved) {
-        _showDialog('保存失敗', '写真の保存に失敗しました。削除は行いませんでした。');
-        return;
-      }
 
-      // Step 2: バースト全体を削除
-      final deleted = await widget.service.deleteAssets(widget.group.assetIds);
-      if (!mounted) return;
-      if (deleted) {
-        Navigator.pop(context, true);
-      } else {
-        _showDialog(
-          '削除失敗',
-          '写真は保存されましたが、バーストの削除に失敗しました。',
-        );
+      switch (result) {
+        case SaveDeleteResult.success:
+          Navigator.pop(context, true);
+        case SaveDeleteResult.cancelled:
+          // ユーザーが削除確認をキャンセル。重複は発生していないので何もしない。
+          break;
+        case SaveDeleteResult.failed:
+          _showDialog(
+            '処理に失敗しました',
+            '保存と削除を完了できませんでした。写真はそのまま残っています。',
+          );
       }
     } catch (e) {
       if (mounted) _showDialog('エラー', '$e');
@@ -141,13 +154,15 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
                     service: widget.service,
                     isSelected: _selected.contains(id),
                     isRepresentative: id == widget.group.representativeId,
-                    onTap: () => setState(() {
-                      if (_selected.contains(id)) {
-                        _selected.remove(id);
-                      } else {
-                        _selected.add(id);
-                      }
-                    }),
+                    onTap: _isProcessing
+                        ? null
+                        : () => setState(() {
+                              if (_selected.contains(id)) {
+                                _selected.remove(id);
+                              } else {
+                                _selected.add(id);
+                              }
+                            }),
                   );
                 },
               ),
@@ -163,8 +178,8 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
     final canSave = _selected.isNotEmpty;
 
     final statusText = _selected.isEmpty
-        ? '保存する写真をタップして選択してください'
-        : '${_selected.length}枚を保存してバーストの${widget.group.count}枚を削除します';
+        ? '残す写真をタップして選択してください'
+        : '${_selected.length}枚を残してバーストの${widget.group.count}枚を削除します';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -191,13 +206,15 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
               CupertinoButton(
                 padding: EdgeInsets.zero,
                 minSize: 36,
-                onPressed: () => setState(() {
-                  if (allSelected) {
-                    _selected.clear();
-                  } else {
-                    _selected.addAll(assetIds);
-                  }
-                }),
+                onPressed: _isProcessing
+                    ? null
+                    : () => setState(() {
+                          if (allSelected) {
+                            _selected.clear();
+                          } else {
+                            _selected.addAll(assetIds);
+                          }
+                        }),
                 child: Text(
                   allSelected ? '全解除' : '全選択',
                   style: const TextStyle(fontSize: 15),
@@ -210,7 +227,7 @@ class _BurstDetailScreenState extends State<BurstDetailScreen> {
                   onPressed: canSave && !_isProcessing ? _saveAndDeleteBurst : null,
                   borderRadius: BorderRadius.circular(12),
                   child: const Text(
-                    '選択を保存してバーストを削除',
+                    '選択を残してバーストを削除',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -230,7 +247,7 @@ class _PhotoCell extends StatefulWidget {
   final BurstPhotoService service;
   final bool isSelected;
   final bool isRepresentative;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _PhotoCell({
     required this.assetId,
@@ -289,9 +306,9 @@ class _PhotoCellState extends State<_PhotoCell> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
-                  '★',
+                  'おすすめ',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
                     color: CupertinoColors.black,
                   ),

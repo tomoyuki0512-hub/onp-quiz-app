@@ -166,8 +166,9 @@ class _BurstGroupRowState extends State<_BurstGroupRow> {
   }
 
   Future<void> _loadThumbnail() async {
+    // 一覧のサムネイルは「写りの良い1枚」（代表フレーム）を表示する。
     final thumb = await widget.service.getAssetThumbnail(
-      widget.group.assetIds.first,
+      widget.group.representativeId ?? widget.group.assetIds.first,
       size: 144,
     );
     if (mounted) setState(() => _thumbnail = thumb);
