@@ -28,39 +28,20 @@ jobs:
       - name: Show Flutter version
         run: flutter --version
 
+      # 生成物(プラグイン登録/Pods)を確実に再生成するため一度クリーンする。
+      # flutter-action のキャッシュが古い状態を復元して pod install と
+      # ずれることで audioplayers_darwin が組み込まれない問題を防ぐ。
+      - name: Clean
+        run: flutter clean
+
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Pod install
-        working-directory: ios
-        run: pod install --repo-update
-
-      - name: Build iOS (xcodebuild, no codesign)
-        run: |
-          set -o pipefail
-          xcodebuild build \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination "generic/platform=iOS" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            SYMROOT="$(pwd)/build/ios" \
-            2>&1 | xcpretty --color --simple || \
-          xcodebuild build \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination "generic/platform=iOS" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            SYMROOT="$(pwd)/build/ios"
+      # pub get → プラグイン登録の生成 → pod install → xcodebuild を
+      # Flutter が正しい順序で一括実行する。手動でステップを分けると
+      # 生成物の順序ずれでプラグインのモジュールが見つからないことがある。
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
 
       - name: Locate built .app
         run: |
