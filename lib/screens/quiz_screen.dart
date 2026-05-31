@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
-import '../data/level1.dart';
+import '../models/level.dart';
 import '../models/quiz_note.dart';
 import '../services/tone_player.dart';
 import '../widgets/answer_choices.dart';
@@ -11,10 +12,9 @@ import '../widgets/staff_view.dart';
 enum AnswerMode { buttons, piano }
 
 class QuizScreen extends StatefulWidget {
-  /// 1セッションの出題数。
-  final int questionCount;
+  final Level level;
 
-  const QuizScreen({super.key, this.questionCount = 10});
+  const QuizScreen({super.key, required this.level});
 
   @override
   State<QuizScreen> createState() => _QuizScreenState();
@@ -22,41 +22,68 @@ class QuizScreen extends StatefulWidget {
 
 class _QuizScreenState extends State<QuizScreen> {
   final TonePlayer _tone = TonePlayer();
-  late List<QuizNote> _questions;
+  final Random _rng = Random();
 
-  int _index = 0;
+  List<QuizNote> _buffer = [];
+  late QuizNote _current;
+
+  int _qNo = 1; // 何問目（固定モードの表示用）
+  int _attempted = 0; // 解答した数
   int _score = 0;
   int? _selectedLetter;
   bool _answered = false;
   bool _finished = false;
   AnswerMode _mode = AnswerMode.buttons;
 
+  Timer? _timer;
+  int _remainingSec = 0;
+
+  bool get _timed => widget.level.isTimed;
+
   @override
   void initState() {
     super.initState();
-    _questions = _buildQuestions();
+    _current = _drawNote();
+    if (_timed) _startTimer();
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     _tone.dispose();
     super.dispose();
   }
 
-  List<QuizNote> _buildQuestions() {
-    final pool = [...level1Notes]..shuffle(Random());
-    final count = min(widget.questionCount, pool.length);
-    return pool.take(count).toList();
+  void _startTimer() {
+    _remainingSec = widget.level.timeLimit!.inSeconds;
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      setState(() {
+        _remainingSec--;
+        if (_remainingSec <= 0) {
+          _remainingSec = 0;
+          t.cancel();
+          _finished = true;
+        }
+      });
+    });
   }
 
-  QuizNote get _current => _questions[_index];
+  /// シャッフル済みバッファから1音取り出す。空なら補充する。
+  QuizNote _drawNote() {
+    if (_buffer.isEmpty) {
+      _buffer = [...widget.level.pool]..shuffle(_rng);
+    }
+    return _buffer.removeLast();
+  }
 
   void _answer(int letterIndex) {
-    if (_answered) return;
+    if (_answered || _finished) return;
     final correct = _current.matches(letterIndex);
     setState(() {
       _selectedLetter = letterIndex;
       _answered = true;
+      _attempted++;
       if (correct) _score++;
     });
     // 出題された音の高さを鳴らす。
@@ -64,36 +91,41 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   void _next() {
-    if (_index + 1 >= _questions.length) {
+    if (!_timed && _qNo >= widget.level.questionCount) {
       setState(() => _finished = true);
       return;
     }
     setState(() {
-      _index++;
+      _current = _drawNote();
+      _qNo++;
       _selectedLetter = null;
       _answered = false;
     });
   }
 
   void _restart() {
+    _timer?.cancel();
     setState(() {
-      _questions = _buildQuestions();
-      _index = 0;
+      _buffer = [];
+      _current = _drawNote();
+      _qNo = 1;
+      _attempted = 0;
       _score = 0;
       _selectedLetter = null;
       _answered = false;
       _finished = false;
     });
+    if (_timed) _startTimer();
   }
 
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
-        middle: Text(_finished ? '結果' : '${_index + 1} / ${_questions.length}'),
+        middle: Text(_navTitle()),
         trailing: _finished
             ? null
-            : Text('$_score問正解',
+            : Text('$_score正解',
                 style: const TextStyle(
                     fontSize: 14, color: CupertinoColors.secondaryLabel)),
       ),
@@ -103,10 +135,18 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
+  String _navTitle() {
+    if (_finished) return '結果';
+    if (_timed) return '残り $_remainingSec秒';
+    return '$_qNo / ${widget.level.questionCount}';
+  }
+
   // ---- クイズ本体 ----
 
   Widget _buildQuiz() {
     final correctLetter = _answered ? _current.letterIndex : null;
+    final caption =
+        widget.level.grandStaff ? '大譜表' : _current.clef.label;
 
     return Column(
       children: [
@@ -116,7 +156,7 @@ class _QuizScreenState extends State<QuizScreen> {
               children: [
                 const SizedBox(height: 12),
                 Text(
-                  _current.clef.label,
+                  caption,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -124,7 +164,7 @@ class _QuizScreenState extends State<QuizScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                StaffView(note: _current),
+                StaffView(note: _current, grandStaff: widget.level.grandStaff),
                 const SizedBox(height: 12),
                 _buildFeedback(),
               ],
@@ -151,7 +191,8 @@ class _QuizScreenState extends State<QuizScreen> {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: correct ? CupertinoColors.systemGreen : CupertinoColors.systemRed,
+            color:
+                correct ? CupertinoColors.systemGreen : CupertinoColors.systemRed,
           ),
         ),
         const SizedBox(height: 4),
@@ -164,6 +205,7 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Widget _buildBottomControls(int? correctLetter) {
+    final isLastFixed = !_timed && _qNo >= widget.level.questionCount;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       decoration: const BoxDecoration(
@@ -214,7 +256,7 @@ class _QuizScreenState extends State<QuizScreen> {
               onPressed: _answered ? _next : null,
               borderRadius: BorderRadius.circular(12),
               child: Text(
-                _index + 1 >= _questions.length ? '結果を見る' : '次の問題',
+                isLastFixed ? '結果を見る' : '次の問題',
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
@@ -227,17 +269,18 @@ class _QuizScreenState extends State<QuizScreen> {
   // ---- 結果画面 ----
 
   Widget _buildResult() {
-    final total = _questions.length;
-    final allCorrect = _score == total;
+    final total = _timed ? _attempted : widget.level.questionCount;
+    final allCorrect = total > 0 && _score == total;
+    final subtitle = _timed
+        ? '制限時間 ${widget.level.timeLimit!.inSeconds}秒'
+        : (allCorrect ? 'すばらしい！全問正解です。' : 'くりかえして音符に慣れよう。');
+
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            allCorrect ? '🎉' : '🎵',
-            style: const TextStyle(fontSize: 64),
-          ),
+          Text(allCorrect ? '🎉' : '🎵', style: const TextStyle(fontSize: 64)),
           const SizedBox(height: 16),
           Text(
             '$total問中 $_score問 正解',
@@ -245,7 +288,7 @@ class _QuizScreenState extends State<QuizScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            allCorrect ? 'すばらしい！全問正解です。' : 'くりかえして音符に慣れよう。',
+            subtitle,
             style: const TextStyle(
                 fontSize: 15, color: CupertinoColors.secondaryLabel),
           ),

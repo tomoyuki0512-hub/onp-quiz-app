@@ -1,17 +1,18 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photo_deleter/main.dart';
 import 'package:photo_deleter/models/clef.dart';
 import 'package:photo_deleter/models/quiz_note.dart';
 import 'package:photo_deleter/data/level1.dart';
+import 'package:photo_deleter/data/levels.dart';
 
 void main() {
-  testWidgets('ホーム画面にタイトルが表示される', (WidgetTester tester) async {
+  testWidgets('ホーム画面にレベル一覧が表示される', (WidgetTester tester) async {
     await tester.pumpWidget(const MusicQuizApp());
     await tester.pumpAndSettle();
 
     expect(find.text('音符あてクイズ'), findsOneWidget);
-    expect(find.text('はじめる'), findsOneWidget);
+    expect(find.text('レベル1'), findsOneWidget);
+    expect(find.text('レベル5'), findsOneWidget);
   });
 
   group('QuizNote の導出値', () {
@@ -53,6 +54,49 @@ void main() {
 
     test('全体は16音', () {
       expect(level1Notes.length, 16);
+    });
+  });
+
+  group('notesInRange', () {
+    test('両端を含み、自然音を degree 昇順で生成する', () {
+      final notes = notesInRange(Clef.treble, 30, 38); // E4..F5
+      expect(notes.length, 9);
+      expect(notes.first.midi, 64); // E4
+      expect(notes.last.midi, 77); // F5
+      expect(notes.every((n) => n.clef == Clef.treble), isTrue);
+      // degree が単調増加
+      for (int i = 1; i < notes.length; i++) {
+        expect(notes[i].degree, greaterThan(notes[i - 1].degree));
+      }
+    });
+  });
+
+  group('レベル2〜5の構成', () {
+    test('レベル2: 五線フル（加線なし）', () {
+      expect(level2.pool.length, 18); // 9 + 9
+      expect(level2.grandStaff, isFalse);
+      expect(level2.isTimed, isFalse);
+    });
+
+    test('レベル3: 少しの加線（中央ドを含む）', () {
+      expect(level3.pool.length, 26); // 13 + 13
+      // 中央ド(C4, midi60)が含まれる
+      expect(level3.pool.any((n) => n.midi == 60), isTrue);
+    });
+
+    test('レベル4: 大譜表', () {
+      expect(level4.grandStaff, isTrue);
+      expect(level4.pool.length, 25); // degree 16..40
+    });
+
+    test('レベル5: タイムアタック', () {
+      expect(level5.isTimed, isTrue);
+      expect(level5.timeLimit, const Duration(seconds: 60));
+    });
+
+    test('全5レベルが推奨順に並ぶ', () {
+      expect(levels.length, 5);
+      expect(levels.map((l) => l.id), [1, 2, 3, 4, 5]);
     });
   });
 }
