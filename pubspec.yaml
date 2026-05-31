@@ -1,5 +1,5 @@
 name: photo_deleter
-description: iPhoneのバースト写真を効率的に整理するアプリ
+description: 音楽初心者向けの音符あてクイズアプリ（ト音記号・ヘ音記号）
 publish_to: none
 version: 1.0.0+1
 
@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
+  audioplayers: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -18,3 +19,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: false
+
+  assets:
+    - assets/fonts/OFL.txt
+
+  fonts:
+    - family: Bravura
+      fonts:
+        - asset: assets/fonts/Bravura.otf

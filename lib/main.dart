@@ -1,23 +1,22 @@
 import 'package:flutter/cupertino.dart';
 import 'screens/home_screen.dart';
-import 'services/burst_photo_service.dart';
 
 void main() {
-  runApp(const PhotoDeleterApp());
+  runApp(const MusicQuizApp());
 }
 
-class PhotoDeleterApp extends StatelessWidget {
-  const PhotoDeleterApp({super.key});
+class MusicQuizApp extends StatelessWidget {
+  const MusicQuizApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoApp(
-      title: 'バースト写真クリーナー',
-      theme: const CupertinoThemeData(
+    return const CupertinoApp(
+      title: 'おんぷクイズ',
+      theme: CupertinoThemeData(
         primaryColor: CupertinoColors.systemBlue,
         brightness: Brightness.light,
       ),
-      home: HomeScreen(service: BurstPhotoService()),
+      home: HomeScreen(),
       debugShowCheckedModeBanner: false,
     );
   }

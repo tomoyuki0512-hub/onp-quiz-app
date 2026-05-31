@@ -1,46 +1,48 @@
-# バースト写真クリーナー (photo-deleter)
+# おんぷクイズ (music note quiz)
 
-iPhone のバースト（連写）写真を整理するための Flutter + iOS ネイティブアプリです。
-連写の中から写りの良い1枚を選び、**オリジナル品質の独立した写真として保存**したうえで、
-**バースト全体をまとめて削除**します。
+音楽初心者向けの「音符あてクイズ」アプリ（Flutter / iOS）。
+五線譜に表示された音符を見て、その音名（ドレミファソラシ）を当てます。
 
-## 使い方
+## レベル1
 
-1. アプリを起動し、フォトライブラリへのアクセスを許可する
-2. 一覧からバーストを選ぶ（サムネイルは iOS が選んだ代表フレーム）
-3. 残したい写真をタップで選択（代表フレームは初期選択済み）
-4. 「選択を残してバーストを削除」→ iOS の削除確認で「削除」をタップ
+- **ト音記号**: 中央ド(C4) 〜 上のド(C5) の1オクターブ
+- **ヘ音記号**: 下のド(C3) 〜 中央ド(C4) の1オクターブ
 
-## 設計のポイント
+1セッション10問。ト音記号・ヘ音記号がランダムに出題されます。
 
-- **保存と削除はアトミック**: 選択フレームの保存とバースト削除を 1 つの
-  `PHPhotoLibrary.performChanges` にまとめている。iOS の削除確認は 1 回だけで、
-  ユーザーがキャンセルすると保存もまとめてロールバックされるため、
-  「コピーだけ残って重複する」状態が発生しない。
-- **オリジナル品質を保持**: `PHAssetResource` から元ファイルをそのまま読み出して
-  保存するため、解像度・フォーマット・メタデータ（撮影日時・位置情報）が維持される。
-- **高速なサムネイル表示**: バースト一覧取得時に 1 度だけ全ライブラリを列挙して
-  アセットをキャッシュし、以降のサムネイル取得・保存・削除はキャッシュを参照する。
+## 特長
+
+- **2通りの解答方法をワンタッチ切替**: 「ド〜シの7択ボタン」と「ピアノ鍵盤」を
+  セグメントコントロールでいつでも切り替え可能。
+- **音が鳴る**: 解答すると、その音符の高さの音を再生（耳でも確認）。
+  音源アセットを持たず、Dart 側で WAV を合成するため完全オフライン。
+- **本格的な楽譜表示**: 五線・加線・符頭は `CustomPainter` で描画し、音部記号と符頭は
+  SMuFL 標準フォント **Bravura** のグリフを使用。中央ドの加線位置も正確。
 
 ## 構成
 
 | ファイル | 役割 |
 | --- | --- |
-| `lib/main.dart` | アプリのエントリポイント |
-| `lib/screens/home_screen.dart` | バースト一覧 |
-| `lib/screens/burst_detail_screen.dart` | フレーム選択・保存・削除 |
-| `lib/services/burst_photo_service.dart` | ネイティブとの MethodChannel ブリッジ |
-| `lib/models/burst_group.dart` | バーストグループのモデル |
-| `ios/Runner/BurstPhotoPlugin.swift` | PhotoKit を使ったネイティブ実装 |
+| `lib/main.dart` | エントリポイント |
+| `lib/screens/home_screen.dart` | タイトル・レベル選択 |
+| `lib/screens/quiz_screen.dart` | 出題・採点・フィードバック・結果 |
+| `lib/widgets/staff_painter.dart` | 五線譜（五線・加線・音部記号・符頭）の描画 |
+| `lib/widgets/answer_choices.dart` | 7択ボタンの解答UI |
+| `lib/widgets/answer_piano.dart` | ピアノ鍵盤の解答UI |
+| `lib/services/tone_player.dart` | MIDIノート→WAV合成→再生 |
+| `lib/models/quiz_note.dart` | 音符モデル（音名・MIDI・五線位置を導出） |
+| `lib/data/level1.dart` | レベル1の出題プール |
 
 ## ビルド
 
 ```sh
 flutter pub get
 cd ios && pod install && cd ..
-flutter run                 # 実機（フォトライブラリが必要）
-flutter test                # ウィジェットテスト
+flutter run
+flutter test     # スモークテスト＋音符モデル/出題プールのユニットテスト
 ```
 
-> 注: バースト写真とフォトライブラリへの書き込みが必要なため、シミュレータでは
-> 動作確認できません。実機でお試しください。
+## ライセンス
+
+音楽フォント Bravura は SIL Open Font License 1.1（`assets/fonts/OFL.txt`）。
+© Steinberg Media Technologies GmbH.
