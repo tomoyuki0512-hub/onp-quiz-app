@@ -56,20 +56,20 @@ jobs:
           mkdir -p "$OUTDIR/Payload"
           cp -R "$APP_PATH" "$OUTDIR/Payload/"
           cd "$OUTDIR"
-          zip -qq -r -9 photo_deleter-unsigned.ipa Payload
-          ls -la photo_deleter-unsigned.ipa
+          zip -qq -r -9 onp_quiz_app-unsigned.ipa Payload
+          ls -la onp_quiz_app-unsigned.ipa
           echo "IPA_DIR=$OUTDIR" >> $GITHUB_ENV
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: photo_deleter-unsigned-ipa
-          path: ${{ env.IPA_DIR }}/photo_deleter-unsigned.ipa
+          name: onp_quiz_app-unsigned-ipa
+          path: ${{ env.IPA_DIR }}/onp_quiz_app-unsigned.ipa
           retention-days: 30
 
       - name: Upload .app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: photo_deleter-Runner-app
+          name: onp_quiz_app-Runner-app
           path: build/ios/**/Runner.app
           retention-days: 7

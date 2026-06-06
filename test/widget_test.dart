@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:photo_deleter/main.dart';
-import 'package:photo_deleter/models/clef.dart';
-import 'package:photo_deleter/models/quiz_note.dart';
-import 'package:photo_deleter/data/level1.dart';
-import 'package:photo_deleter/data/levels.dart';
+import 'package:onp_quiz_app/main.dart';
+import 'package:onp_quiz_app/models/clef.dart';
+import 'package:onp_quiz_app/models/quiz_note.dart';
+import 'package:onp_quiz_app/data/level1.dart';
+import 'package:onp_quiz_app/data/levels.dart';
 
 void main() {
   testWidgets('ホーム画面にレベル一覧が表示される', (WidgetTester tester) async {
